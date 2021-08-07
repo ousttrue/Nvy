@@ -585,7 +585,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
 
     RendererShutdown(&renderer);
-    NvimShutdown(&nvim);
     UnregisterClass(window_class_name, instance);
     DestroyWindow(hwnd);
 

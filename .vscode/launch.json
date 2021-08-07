@@ -8,12 +8,12 @@
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/Nvy.exe",
+            "program": "${workspaceFolder}/build/Nvy.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],
-            "console": "externalTerminal"
+            "console": "internalConsole"
         }
     ]
 }

@@ -15,34 +15,35 @@ struct Context
     UINT saved_dpi_scaling;
     uint32_t saved_window_width;
     uint32_t saved_window_height;
-};
 
-void ToggleFullscreen(HWND hwnd, Context *context)
-{
-    DWORD style = GetWindowLong(hwnd, GWL_STYLE);
-    MONITORINFO mi{.cbSize = sizeof(MONITORINFO)};
-    if (style & WS_OVERLAPPEDWINDOW)
+    void ToggleFullscreen()
     {
-        if (GetWindowPlacement(hwnd, &context->saved_window_placement) &&
-            GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
-                           &mi))
+        DWORD style = GetWindowLong(hwnd, GWL_STYLE);
+        MONITORINFO mi{.cbSize = sizeof(MONITORINFO)};
+        if (style & WS_OVERLAPPEDWINDOW)
         {
-            SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
-            SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
-                         mi.rcMonitor.right - mi.rcMonitor.left,
-                         mi.rcMonitor.bottom - mi.rcMonitor.top,
-                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+            if (GetWindowPlacement(hwnd, &saved_window_placement) &&
+                GetMonitorInfo(
+                    MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi))
+            {
+                SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+                SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left,
+                             mi.rcMonitor.top,
+                             mi.rcMonitor.right - mi.rcMonitor.left,
+                             mi.rcMonitor.bottom - mi.rcMonitor.top,
+                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+            }
+        }
+        else
+        {
+            SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+            SetWindowPlacement(hwnd, &saved_window_placement);
+            SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
         }
     }
-    else
-    {
-        SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
-        SetWindowPlacement(hwnd, &context->saved_window_placement);
-        SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-    }
-}
+};
 
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree)
 {
@@ -96,7 +97,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree)
 
             if (context->start_maximized)
             {
-                ToggleFullscreen(context->hwnd, context);
+                context->ToggleFullscreen();
             }
             ShowWindow(context->hwnd, SW_SHOWDEFAULT);
         }
@@ -248,7 +249,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         // Special case for <ALT+ENTER> (fullscreen transition)
         if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN)
         {
-            ToggleFullscreen(hwnd, context);
+            context->ToggleFullscreen();
         }
         else
         {

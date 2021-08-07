@@ -38,36 +38,26 @@ enum class MouseAction
 };
 constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
-struct Nvim
+class Nvim
 {
-    int64_t next_msg_id = 0;
-    Vec<NvimRequest> msg_id_to_method;
-
-    HWND hwnd = nullptr;
+    class NvimImpl *_impl;
 
 public:
-    HANDLE stdin_read = nullptr;
-    HANDLE stdin_write = nullptr;
-    HANDLE stdout_read = nullptr;
-    HANDLE stdout_write = nullptr;
-    PROCESS_INFORMATION process_info = {0};
-
     Nvim(wchar_t *command_line, HWND hwnd);
     ~Nvim();
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;
+
+    void ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out);
+    void SendUIAttach(int grid_rows, int grid_cols);
+    void SendResize(int grid_rows, int grid_cols);
+    void SendChar(wchar_t input_char);
+    void SendSysChar(wchar_t sys_char);
+    void SendInput(const char *input_chars);
+    void SendInput(int virtual_key, int flags);
+    void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
+                        int mouse_col);
+    bool ProcessKeyDown(int virtual_key);
+    void OpenFile(const wchar_t *file_name);
+    NvimRequest GetRequestFromID(size_t id) const;
 };
-
-void NvimParseConfig(Nvim *nvim, mpack_node_t config_node,
-                     Vec<char> *guifont_out);
-
-void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols);
-void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols);
-void NvimSendChar(Nvim *nvim, wchar_t input_char);
-void NvimSendSysChar(Nvim *nvim, wchar_t sys_char);
-void NvimSendInput(Nvim *nvim, const char *input_chars);
-void NvimSendInput(Nvim *nvim, int virtual_key, int flags);
-void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action,
-                        int mouse_row, int mouse_col);
-bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);
-void NvimOpenFile(Nvim *nvim, const wchar_t *file_name);

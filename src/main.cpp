@@ -50,8 +50,8 @@ struct Context
 
         if (result.type == MPackMessageType::Response)
         {
-            assert(result.response.msg_id <= nvim->next_msg_id);
-            switch (nvim->msg_id_to_method[result.response.msg_id])
+            auto method = nvim->GetRequestFromID(result.response.msg_id);
+            switch (method)
             {
             case NvimRequest::vim_get_api_info:
             {
@@ -67,21 +67,18 @@ struct Context
             case NvimRequest::nvim_eval:
             {
                 Vec<char> guifont_buffer;
-                NvimParseConfig(nvim, result.params, &guifont_buffer);
+                nvim->ParseConfig(result.params, &guifont_buffer);
 
                 if (!guifont_buffer.empty())
                 {
-                    RendererUpdateGuiFont(renderer,
-                                          guifont_buffer.data(),
+                    RendererUpdateGuiFont(renderer, guifont_buffer.data(),
                                           strlen(guifont_buffer.data()));
                 }
 
-                if (start_grid_size.rows != 0 &&
-                    start_grid_size.cols != 0)
+                if (start_grid_size.rows != 0 && start_grid_size.cols != 0)
                 {
                     PixelSize start_size = RendererGridToPixelSize(
-                        renderer, start_grid_size.rows,
-                        start_grid_size.cols);
+                        renderer, start_grid_size.rows, start_grid_size.cols);
                     RECT client_rect;
                     GetClientRect(hwnd, &client_rect);
                     MoveWindow(hwnd, client_rect.left, client_rect.top,
@@ -94,7 +91,7 @@ struct Context
                 auto [rows, cols] = RendererPixelsToGridSize(
                     renderer, renderer->pixel_size.width,
                     renderer->pixel_size.height);
-                NvimSendUIAttach(nvim, rows, cols);
+                nvim->SendUIAttach(rows, cols);
 
                 if (start_maximized)
                 {
@@ -195,7 +192,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             if (rows != context->renderer->grid_rows ||
                 cols != context->renderer->grid_cols)
             {
-                NvimSendResize(context->nvim, rows, cols);
+                context->nvim->SendResize(rows, cols);
             }
 
             context->saved_dpi_scaling = current_dpi;
@@ -218,7 +215,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         auto [rows, cols] = RendererPixelsToGridSize(
             context->renderer, context->renderer->pixel_size.width,
             context->renderer->pixel_size.height);
-        NvimSendResize(context->nvim, rows, cols);
+        context->nvim->SendResize(rows, cols);
     }
         return 0;
     case WM_DEADCHAR:
@@ -233,16 +230,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         // Special case for <LT>
         if (wparam == 0x3C)
         {
-            NvimSendInput(context->nvim, "<LT>");
+            context->nvim->SendInput("<LT>");
             return 0;
         }
-        NvimSendChar(context->nvim, static_cast<wchar_t>(wparam));
+        context->nvim->SendChar(static_cast<wchar_t>(wparam));
     }
         return 0;
     case WM_SYSCHAR:
     {
         context->dead_char_pending = false;
-        NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
+        context->nvim->SendSysChar(static_cast<wchar_t>(wparam));
     }
         return 0;
     case WM_KEYDOWN:
@@ -278,7 +275,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             // If none of the special keys were hit, process in
             // WM_CHAR
-            if (!NvimProcessKeyDown(context->nvim, static_cast<int>(wparam)))
+            if (!context->nvim->ProcessKeyDown(static_cast<int>(wparam)))
             {
                 TranslateMessage(&current_msg);
             }
@@ -297,23 +294,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             {
             case MK_LBUTTON:
             {
-                NvimSendMouseInput(context->nvim, MouseButton::Left,
-                                   MouseAction::Drag, grid_pos.row,
-                                   grid_pos.col);
+                context->nvim->SendMouseInput(MouseButton::Left,
+                                              MouseAction::Drag, grid_pos.row,
+                                              grid_pos.col);
             }
             break;
             case MK_MBUTTON:
             {
-                NvimSendMouseInput(context->nvim, MouseButton::Middle,
-                                   MouseAction::Drag, grid_pos.row,
-                                   grid_pos.col);
+                context->nvim->SendMouseInput(MouseButton::Middle,
+                                              MouseAction::Drag, grid_pos.row,
+                                              grid_pos.col);
             }
             break;
             case MK_RBUTTON:
             {
-                NvimSendMouseInput(context->nvim, MouseButton::Right,
-                                   MouseAction::Drag, grid_pos.row,
-                                   grid_pos.col);
+                context->nvim->SendMouseInput(MouseButton::Right,
+                                              MouseAction::Drag, grid_pos.row,
+                                              grid_pos.col);
             }
             break;
             }
@@ -333,33 +330,33 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                                                     cursor_pos.x, cursor_pos.y);
         if (msg == WM_LBUTTONDOWN)
         {
-            NvimSendMouseInput(context->nvim, MouseButton::Left,
-                               MouseAction::Press, row, col);
+            context->nvim->SendMouseInput(MouseButton::Left, MouseAction::Press,
+                                          row, col);
         }
         else if (msg == WM_MBUTTONDOWN)
         {
-            NvimSendMouseInput(context->nvim, MouseButton::Middle,
-                               MouseAction::Press, row, col);
+            context->nvim->SendMouseInput(MouseButton::Middle,
+                                          MouseAction::Press, row, col);
         }
         else if (msg == WM_RBUTTONDOWN)
         {
-            NvimSendMouseInput(context->nvim, MouseButton::Right,
-                               MouseAction::Press, row, col);
+            context->nvim->SendMouseInput(MouseButton::Right,
+                                          MouseAction::Press, row, col);
         }
         else if (msg == WM_LBUTTONUP)
         {
-            NvimSendMouseInput(context->nvim, MouseButton::Left,
-                               MouseAction::Release, row, col);
+            context->nvim->SendMouseInput(MouseButton::Left,
+                                          MouseAction::Release, row, col);
         }
         else if (msg == WM_MBUTTONUP)
         {
-            NvimSendMouseInput(context->nvim, MouseButton::Middle,
-                               MouseAction::Release, row, col);
+            context->nvim->SendMouseInput(MouseButton::Middle,
+                                          MouseAction::Release, row, col);
         }
         else if (msg == WM_RBUTTONUP)
         {
-            NvimSendMouseInput(context->nvim, MouseButton::Right,
-                               MouseAction::Release, row, col);
+            context->nvim->SendMouseInput(MouseButton::Right,
+                                          MouseAction::Release, row, col);
         }
     }
         return 0;
@@ -368,12 +365,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         int button = GET_XBUTTON_WPARAM(wparam);
         if (button == XBUTTON1 && !context->xbuttons[0])
         {
-            NvimSendInput(context->nvim, "<C-o>");
+            context->nvim->SendInput("<C-o>");
             context->xbuttons[0] = true;
         }
         else if (button == XBUTTON2 && !context->xbuttons[1])
         {
-            NvimSendInput(context->nvim, "<C-i>");
+            context->nvim->SendInput("<C-i>");
             context->xbuttons[1] = true;
         }
     }
@@ -420,15 +417,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             if (rows != context->renderer->grid_rows ||
                 cols != context->renderer->grid_cols)
             {
-                NvimSendResize(context->nvim, rows, cols);
+                context->nvim->SendResize(rows, cols);
             }
         }
         else
         {
             for (int i = 0; i < abs(scroll_amount); ++i)
             {
-                NvimSendMouseInput(context->nvim, MouseButton::Wheel, action,
-                                   row, col);
+                context->nvim->SendMouseInput(MouseButton::Wheel, action, row,
+                                              col);
             }
         }
     }
@@ -442,7 +439,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         {
             DragQueryFileW(reinterpret_cast<HDROP>(wparam), i, file_to_open,
                            MAX_PATH);
-            NvimOpenFile(context->nvim, file_to_open);
+            context->nvim->OpenFile(file_to_open);
         }
     }
         return 0;
@@ -549,7 +546,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                                window_title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
                                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                                nullptr, nullptr, instance, &context);
-    if (hwnd == NULL){
+    if (hwnd == NULL)
+    {
         return 1;
     }
     Nvim nvim(nvim_command_line, hwnd);
@@ -581,7 +579,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                 context.saved_window_height);
             RendererResize(context.renderer, context.saved_window_width,
                            context.saved_window_height);
-            NvimSendResize(context.nvim, rows, cols);
+            context.nvim->SendResize(rows, cols);
         }
     }
 

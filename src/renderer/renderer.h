@@ -130,5 +130,9 @@ struct Renderer
     void Redraw(mpack_node_t params);
     PixelSize GridToPixelSize(int rows, int cols);
     GridSize PixelsToGridSize(int width, int height);
+    GridSize GridSize()
+    {
+        return PixelsToGridSize(pixel_size.width, pixel_size.height);
+    }
     GridPoint CursorToGridPoint(int x, int y);
 };

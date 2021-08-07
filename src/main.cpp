@@ -88,8 +88,7 @@ struct Context
                 // Attach the renderer now that the window size is
                 // determined
                 renderer->Attach();
-                auto [rows, cols] = renderer->PixelsToGridSize(
-                    renderer->pixel_size.width, renderer->pixel_size.height);
+                auto [rows, cols] = renderer->GridSize();
                 nvim->SendUIAttach(rows, cols);
 
                 if (start_maximized)
@@ -185,9 +184,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             context->renderer->dpi_scale = current_dpi / 96.0f;
             context->renderer->UpdateFont(
                 context->renderer->last_requested_font_size);
-            auto [rows, cols] = context->renderer->PixelsToGridSize(
-                context->renderer->pixel_size.width,
-                context->renderer->pixel_size.height);
+            auto [rows, cols] = context->renderer->GridSize();
             if (rows != context->renderer->grid_rows ||
                 cols != context->renderer->grid_cols)
             {
@@ -211,9 +208,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         return 0;
     case WM_RENDERER_FONT_UPDATE:
     {
-        auto [rows, cols] = context->renderer->PixelsToGridSize(
-            context->renderer->pixel_size.width,
-            context->renderer->pixel_size.height);
+        auto [rows, cols] = context->renderer->GridSize();
         context->nvim->SendResize(rows, cols);
     }
         return 0;
@@ -410,9 +405,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             context->renderer->UpdateFont(
                 context->renderer->last_requested_font_size +
                 (scroll_amount * 2.0f));
-            auto [rows, cols] = context->renderer->PixelsToGridSize(
-                context->renderer->pixel_size.width,
-                context->renderer->pixel_size.height);
+            auto [rows, cols] = context->renderer->GridSize();
             if (rows != context->renderer->grid_rows ||
                 cols != context->renderer->grid_cols)
             {

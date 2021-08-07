@@ -1175,7 +1175,7 @@ PixelSize Renderer::GridToPixelSize(int rows, int cols)
 
 GridSize Renderer::PixelsToGridSize(int width, int height)
 {
-    return GridSize{.rows = static_cast<int>(height / this->font_height),
+    return ::GridSize{.rows = static_cast<int>(height / this->font_height),
                     .cols = static_cast<int>(width / this->font_width)};
 }
 

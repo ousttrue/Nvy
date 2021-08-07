@@ -70,8 +70,9 @@ constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
 struct GlyphDrawingEffect;
 struct GlyphRenderer;
-struct Renderer
+class Renderer
 {
+public:
     CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Vec<HighlightAttributes> hl_attribs;
     Cursor cursor = {0};
@@ -119,6 +120,7 @@ struct Renderer
     bool draw_active = false;
     bool ui_busy = false;
 
+public:
     Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
              float monitor_dpi);
     ~Renderer();
@@ -135,4 +137,21 @@ struct Renderer
         return PixelsToGridSize(pixel_size.width, pixel_size.height);
     }
     GridPoint CursorToGridPoint(int x, int y);
+    bool SetDpiScale(float current_dpi, int *pRows, int *pCols)
+    {
+        dpi_scale = current_dpi / 96.0f;
+        UpdateFont(last_requested_font_size);
+        auto [rows, cols] = GridSize();
+        *pRows = rows;
+        *pCols = cols;
+        return rows != grid_rows || cols != grid_cols;
+    }
+    bool ResizeFont(float size, int *pRows, int *pCols)
+    {
+        UpdateFont(last_requested_font_size + size);
+        auto [rows, cols] = GridSize();
+        *pRows = rows;
+        *pCols = cols;
+        return rows != grid_rows || cols != grid_cols;
+    }
 };

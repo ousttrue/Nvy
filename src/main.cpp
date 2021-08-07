@@ -181,16 +181,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             SetWindowPos(hwnd, nullptr, 0, 0, new_window_width,
                          new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
-            context->renderer->dpi_scale = current_dpi / 96.0f;
-            context->renderer->UpdateFont(
-                context->renderer->last_requested_font_size);
-            auto [rows, cols] = context->renderer->GridSize();
-            if (rows != context->renderer->grid_rows ||
-                cols != context->renderer->grid_cols)
+            int rows, cols;
+            if (context->renderer->SetDpiScale(current_dpi, &rows, &cols))
             {
                 context->nvim->SendResize(rows, cols);
             }
-
             context->saved_dpi_scaling = current_dpi;
         }
     }
@@ -402,12 +397,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
         if (should_resize_font)
         {
-            context->renderer->UpdateFont(
-                context->renderer->last_requested_font_size +
-                (scroll_amount * 2.0f));
-            auto [rows, cols] = context->renderer->GridSize();
-            if (rows != context->renderer->grid_rows ||
-                cols != context->renderer->grid_cols)
+            int rows, cols;
+            if(context->renderer->ResizeFont(scroll_amount * 2.0f, &rows, &cols))
             {
                 context->nvim->SendResize(rows, cols);
             }

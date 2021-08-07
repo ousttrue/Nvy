@@ -43,81 +43,83 @@ struct Context
                              SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
         }
     }
+
+    void ProcessMPackMessage(mpack_tree_t *tree)
+    {
+        MPackMessageResult result = MPackExtractMessageResult(tree);
+
+        if (result.type == MPackMessageType::Response)
+        {
+            assert(result.response.msg_id <= nvim->next_msg_id);
+            switch (nvim->msg_id_to_method[result.response.msg_id])
+            {
+            case NvimRequest::vim_get_api_info:
+            {
+                mpack_node_t top_level_map =
+                    mpack_node_array_at(result.params, 1);
+                mpack_node_t version_map =
+                    mpack_node_map_value_at(top_level_map, 0);
+                int64_t api_level =
+                    mpack_node_map_cstr(version_map, "api_level").data->value.i;
+                assert(api_level > 6);
+            }
+            break;
+            case NvimRequest::nvim_eval:
+            {
+                Vec<char> guifont_buffer;
+                NvimParseConfig(nvim, result.params, &guifont_buffer);
+
+                if (!guifont_buffer.empty())
+                {
+                    RendererUpdateGuiFont(renderer,
+                                          guifont_buffer.data(),
+                                          strlen(guifont_buffer.data()));
+                }
+
+                if (start_grid_size.rows != 0 &&
+                    start_grid_size.cols != 0)
+                {
+                    PixelSize start_size = RendererGridToPixelSize(
+                        renderer, start_grid_size.rows,
+                        start_grid_size.cols);
+                    RECT client_rect;
+                    GetClientRect(hwnd, &client_rect);
+                    MoveWindow(hwnd, client_rect.left, client_rect.top,
+                               start_size.width, start_size.height, false);
+                }
+
+                // Attach the renderer now that the window size is
+                // determined
+                RendererAttach(renderer);
+                auto [rows, cols] = RendererPixelsToGridSize(
+                    renderer, renderer->pixel_size.width,
+                    renderer->pixel_size.height);
+                NvimSendUIAttach(nvim, rows, cols);
+
+                if (start_maximized)
+                {
+                    ToggleFullscreen();
+                }
+                ShowWindow(hwnd, SW_SHOWDEFAULT);
+            }
+            break;
+            case NvimRequest::nvim_input:
+            case NvimRequest::nvim_input_mouse:
+            case NvimRequest::nvim_command:
+            {
+            }
+            break;
+            }
+        }
+        else if (result.type == MPackMessageType::Notification)
+        {
+            if (MPackMatchString(result.notification.name, "redraw"))
+            {
+                RendererRedraw(renderer, result.params);
+            }
+        }
+    }
 };
-
-void ProcessMPackMessage(Context *context, mpack_tree_t *tree)
-{
-    MPackMessageResult result = MPackExtractMessageResult(tree);
-
-    if (result.type == MPackMessageType::Response)
-    {
-        assert(result.response.msg_id <= context->nvim->next_msg_id);
-        switch (context->nvim->msg_id_to_method[result.response.msg_id])
-        {
-        case NvimRequest::vim_get_api_info:
-        {
-            mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
-            mpack_node_t version_map =
-                mpack_node_map_value_at(top_level_map, 0);
-            int64_t api_level =
-                mpack_node_map_cstr(version_map, "api_level").data->value.i;
-            assert(api_level > 6);
-        }
-        break;
-        case NvimRequest::nvim_eval:
-        {
-            Vec<char> guifont_buffer;
-            NvimParseConfig(context->nvim, result.params, &guifont_buffer);
-
-            if (!guifont_buffer.empty())
-            {
-                RendererUpdateGuiFont(context->renderer, guifont_buffer.data(),
-                                      strlen(guifont_buffer.data()));
-            }
-
-            if (context->start_grid_size.rows != 0 &&
-                context->start_grid_size.cols != 0)
-            {
-                PixelSize start_size = RendererGridToPixelSize(
-                    context->renderer, context->start_grid_size.rows,
-                    context->start_grid_size.cols);
-                RECT client_rect;
-                GetClientRect(context->hwnd, &client_rect);
-                MoveWindow(context->hwnd, client_rect.left, client_rect.top,
-                           start_size.width, start_size.height, false);
-            }
-
-            // Attach the renderer now that the window size is
-            // determined
-            RendererAttach(context->renderer);
-            auto [rows, cols] = RendererPixelsToGridSize(
-                context->renderer, context->renderer->pixel_size.width,
-                context->renderer->pixel_size.height);
-            NvimSendUIAttach(context->nvim, rows, cols);
-
-            if (context->start_maximized)
-            {
-                context->ToggleFullscreen();
-            }
-            ShowWindow(context->hwnd, SW_SHOWDEFAULT);
-        }
-        break;
-        case NvimRequest::nvim_input:
-        case NvimRequest::nvim_input_mouse:
-        case NvimRequest::nvim_command:
-        {
-        }
-        break;
-        }
-    }
-    else if (result.type == MPackMessageType::Notification)
-    {
-        if (MPackMatchString(result.notification.name, "redraw"))
-        {
-            RendererRedraw(context->renderer, result.params);
-        }
-    }
-}
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -208,7 +210,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_NVIM_MESSAGE:
     {
         mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
-        ProcessMPackMessage(context, tree);
+        context->ProcessMPackMessage(tree);
     }
         return 0;
     case WM_RENDERER_FONT_UPDATE:

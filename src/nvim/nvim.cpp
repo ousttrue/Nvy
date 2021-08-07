@@ -73,10 +73,9 @@ DWORD WINAPI NvimProcessMonitor(LPVOID param)
     return 0;
 }
 
-void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
+Nvim::Nvim(wchar_t *command_line, HWND hwnd)
+: hwnd(hwnd)
 {
-    nvim->hwnd = hwnd;
-
     HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info{
         .BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION{
@@ -86,35 +85,35 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
 
     SECURITY_ATTRIBUTES sec_attribs{.nLength = sizeof(SECURITY_ATTRIBUTES),
                                     .bInheritHandle = true};
-    CreatePipe(&nvim->stdin_read, &nvim->stdin_write, &sec_attribs, 0);
-    CreatePipe(&nvim->stdout_read, &nvim->stdout_write, &sec_attribs, 0);
+    CreatePipe(&this->stdin_read, &this->stdin_write, &sec_attribs, 0);
+    CreatePipe(&this->stdout_read, &this->stdout_write, &sec_attribs, 0);
 
     STARTUPINFO startup_info{.cb = sizeof(STARTUPINFO),
                              .dwFlags = STARTF_USESTDHANDLES,
-                             .hStdInput = nvim->stdin_read,
-                             .hStdOutput = nvim->stdout_write,
-                             .hStdError = nvim->stdout_write};
+                             .hStdInput = this->stdin_read,
+                             .hStdOutput = this->stdout_write,
+                             .hStdError = this->stdout_write};
 
     // wchar_t command_line[] = L"nvim --embed";
     CreateProcessW(nullptr, command_line, nullptr, nullptr, true,
                    CREATE_NO_WINDOW, nullptr, nullptr, &startup_info,
-                   &nvim->process_info);
-    AssignProcessToJobObject(job_object, nvim->process_info.hProcess);
+                   &this->process_info);
+    AssignProcessToJobObject(job_object, this->process_info.hProcess);
 
     DWORD _;
-    CreateThread(nullptr, 0, NvimMessageHandler, nvim, 0, &_);
-    CreateThread(nullptr, 0, NvimProcessMonitor, nvim, 0, &_);
+    CreateThread(nullptr, 0, NvimMessageHandler, this, 0, &_);
+    CreateThread(nullptr, 0, NvimProcessMonitor, this, 0, &_);
 
     // Query api info
     char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
     mpack_writer_t writer;
     mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-    MPackStartRequest(RegisterRequest(nvim, vim_get_api_info),
+    MPackStartRequest(RegisterRequest(this, vim_get_api_info),
                       NVIM_REQUEST_NAMES[vim_get_api_info], &writer);
     mpack_start_array(&writer, 0);
     mpack_finish_array(&writer);
     size_t size = MPackFinishMessage(&writer);
-    MPackSendData(nvim->stdin_write, data, size);
+    MPackSendData(this->stdin_write, data, size);
 
     // Set g:nvy global variable
     mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
@@ -125,17 +124,17 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
     mpack_write_int(&writer, 1);
     mpack_finish_array(&writer);
     size = MPackFinishMessage(&writer);
-    MPackSendData(nvim->stdin_write, data, size);
+    MPackSendData(this->stdin_write, data, size);
 
     // Query stdpath to find the users init.vim
     mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-    MPackStartRequest(RegisterRequest(nvim, nvim_eval),
+    MPackStartRequest(RegisterRequest(this, nvim_eval),
                       NVIM_REQUEST_NAMES[nvim_eval], &writer);
     mpack_start_array(&writer, 1);
     mpack_write_cstr(&writer, "stdpath('config')");
     mpack_finish_array(&writer);
     size = MPackFinishMessage(&writer);
-    MPackSendData(nvim->stdin_write, data, size);
+    MPackSendData(this->stdin_write, data, size);
 }
 
 Nvim::~Nvim()

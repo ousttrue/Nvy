@@ -40,20 +40,23 @@ constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
 struct Nvim
 {
-    int64_t next_msg_id;
+    int64_t next_msg_id = 0;
     Vec<NvimRequest> msg_id_to_method;
 
-    HWND hwnd;
-    HANDLE stdin_read;
-    HANDLE stdin_write;
-    HANDLE stdout_read;
-    HANDLE stdout_write;
-    PROCESS_INFORMATION process_info;
+    HWND hwnd = nullptr;
 
+public:
+    HANDLE stdin_read = nullptr;
+    HANDLE stdin_write = nullptr;
+    HANDLE stdout_read = nullptr;
+    HANDLE stdout_write = nullptr;
+    PROCESS_INFORMATION process_info = {0};
+
+    Nvim(wchar_t *command_line, HWND hwnd);
     ~Nvim();
+    Nvim(const Nvim &) = delete;
+    Nvim &operator=(const Nvim &) = delete;
 };
-
-void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd);
 
 void NvimParseConfig(Nvim *nvim, mpack_node_t config_node,
                      Vec<char> *guifont_out);

@@ -535,13 +535,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         return 1;
     }
 
-    Nvim nvim{};
     Renderer renderer{};
     Context context{.start_grid_size{.rows = static_cast<int>(rows),
                                      .cols = static_cast<int>(cols)},
                     .start_maximized = start_maximized,
 
-                    .nvim = &nvim,
+                    .nvim = nullptr,
                     .renderer = &renderer,
                     .saved_window_placement =
                         WINDOWPLACEMENT{.length = sizeof(WINDOWPLACEMENT)}};
@@ -550,8 +549,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                                window_title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
                                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                                nullptr, nullptr, instance, &context);
-    if (hwnd == NULL)
+    if (hwnd == NULL){
         return 1;
+    }
+    Nvim nvim(nvim_command_line, hwnd);
+    context.nvim = &nvim;
     context.hwnd = hwnd;
     RECT window_rect;
     DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
@@ -562,7 +564,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                      &(context.saved_dpi_scaling));
     RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor,
                        context.saved_dpi_scaling);
-    NvimInitialize(&nvim, nvim_command_line, hwnd);
 
     MSG msg;
     uint32_t previous_width = 0, previous_height = 0;

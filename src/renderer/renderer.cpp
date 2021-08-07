@@ -194,16 +194,16 @@ Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
     InitializeD3D(this);
     InitializeDWrite(this);
     this->glyph_renderer = new GlyphRenderer(this);
-    RendererUpdateFont(this, DEFAULT_FONT_SIZE, DEFAULT_FONT,
-                       static_cast<int>(strlen(DEFAULT_FONT)));
+    this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
+                     static_cast<int>(strlen(DEFAULT_FONT)));
 }
 
-void RendererAttach(Renderer *renderer)
+void Renderer::Attach()
 {
     RECT client_rect;
-    GetClientRect(renderer->hwnd, &client_rect);
+    GetClientRect(this->hwnd, &client_rect);
     InitializeWindowDependentResources(
-        renderer, static_cast<uint32_t>(client_rect.right - client_rect.left),
+        this, static_cast<uint32_t>(client_rect.right - client_rect.left),
         static_cast<uint32_t>(client_rect.bottom - client_rect.top));
 }
 
@@ -225,9 +225,9 @@ Renderer::~Renderer()
     free(this->grid_cell_properties);
 }
 
-void RendererResize(Renderer *renderer, uint32_t width, uint32_t height)
+void Renderer::Resize(uint32_t width, uint32_t height)
 {
-    InitializeWindowDependentResources(renderer, width, height);
+    InitializeWindowDependentResources(this, width, height);
 }
 
 float GetTextWidth(Renderer *renderer, wchar_t *text, uint32_t length)
@@ -344,15 +344,14 @@ void UpdateFontMetrics(Renderer *renderer, float font_size,
     SafeRelease(&font_collection);
 }
 
-void RendererUpdateFont(Renderer *renderer, float font_size,
-                        const char *font_string, int strlen)
+void Renderer::UpdateFont(float font_size, const char *font_string, int strlen)
 {
-    if (renderer->dwrite_text_format)
+    if (this->dwrite_text_format)
     {
-        renderer->dwrite_text_format->Release();
+        this->dwrite_text_format->Release();
     }
 
-    UpdateFontMetrics(renderer, font_size, font_string, strlen);
+    UpdateFontMetrics(this, font_size, font_string, strlen);
 }
 
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors)
@@ -967,8 +966,7 @@ void DrawBorderRectangles(Renderer *renderer)
     }
 }
 
-void RendererUpdateGuiFont(Renderer *renderer, const char *guifont,
-                           size_t strlen)
+void Renderer::UpdateGuiFont(const char *guifont, size_t strlen)
 {
     if (strlen == 0)
     {
@@ -995,8 +993,7 @@ void RendererUpdateGuiFont(Renderer *renderer, const char *guifont,
         font_size = static_cast<float>(atof(font_size_str));
     }
 
-    RendererUpdateFont(renderer, font_size, guifont,
-                       static_cast<int>(font_str_len));
+    UpdateFont(font_size, guifont, static_cast<int>(font_str_len));
 }
 
 void SetGuiOptions(Renderer *renderer, mpack_node_t option_set)
@@ -1013,7 +1010,7 @@ void SetGuiOptions(Renderer *renderer, mpack_node_t option_set)
         {
             const char *font_str = mpack_node_str(value);
             size_t strlen = mpack_node_strlen(value);
-            RendererUpdateGuiFont(renderer, font_str, strlen);
+            renderer->UpdateGuiFont(font_str, strlen);
 
             // Send message to window in order to update nvim row/col count
             PostMessage(renderer->hwnd, WM_RENDERER_FONT_UPDATE, 0, 0);
@@ -1077,9 +1074,9 @@ void FinishDraw(Renderer *renderer)
     }
 }
 
-void RendererRedraw(Renderer *renderer, mpack_node_t params)
+void Renderer::Redraw(mpack_node_t params)
 {
-    StartDraw(renderer);
+    StartDraw(this);
 
     uint64_t redraw_commands_length = mpack_node_array_length(params);
     for (uint64_t i = 0; i < redraw_commands_length; ++i)
@@ -1090,85 +1087,84 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params)
 
         if (MPackMatchString(redraw_command_name, "option_set"))
         {
-            SetGuiOptions(renderer, redraw_command_arr);
+            SetGuiOptions(this, redraw_command_arr);
         }
         if (MPackMatchString(redraw_command_name, "grid_resize"))
         {
-            UpdateGridSize(renderer, redraw_command_arr);
+            UpdateGridSize(this, redraw_command_arr);
         }
         if (MPackMatchString(redraw_command_name, "grid_clear"))
         {
-            ClearGrid(renderer);
+            ClearGrid(this);
         }
         else if (MPackMatchString(redraw_command_name, "default_colors_set"))
         {
-            UpdateDefaultColors(renderer, redraw_command_arr);
+            UpdateDefaultColors(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "hl_attr_define"))
         {
-            UpdateHighlightAttributes(renderer, redraw_command_arr);
+            UpdateHighlightAttributes(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "grid_line"))
         {
-            DrawGridLines(renderer, redraw_command_arr);
+            DrawGridLines(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "grid_cursor_goto"))
         {
             // If the old cursor position is still within the row bounds,
             // redraw the line to get rid of the cursor
-            if (renderer->cursor.row < renderer->grid_rows)
+            if (this->cursor.row < this->grid_rows)
             {
-                DrawGridLine(renderer, renderer->cursor.row);
+                DrawGridLine(this, this->cursor.row);
             }
-            UpdateCursorPos(renderer, redraw_command_arr);
+            UpdateCursorPos(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "mode_info_set"))
         {
-            UpdateCursorModeInfos(renderer, redraw_command_arr);
+            UpdateCursorModeInfos(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "mode_change"))
         {
             // Redraw cursor if its inside the bounds
-            if (renderer->cursor.row < renderer->grid_rows)
+            if (this->cursor.row < this->grid_rows)
             {
-                DrawGridLine(renderer, renderer->cursor.row);
+                DrawGridLine(this, this->cursor.row);
             }
-            UpdateCursorMode(renderer, redraw_command_arr);
+            UpdateCursorMode(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "busy_start"))
         {
-            renderer->ui_busy = true;
+            this->ui_busy = true;
             // Hide cursor while UI is busy
-            if (renderer->cursor.row < renderer->grid_rows)
+            if (this->cursor.row < this->grid_rows)
             {
-                DrawGridLine(renderer, renderer->cursor.row);
+                DrawGridLine(this, this->cursor.row);
             }
         }
         else if (MPackMatchString(redraw_command_name, "busy_stop"))
         {
-            renderer->ui_busy = false;
+            this->ui_busy = false;
         }
         else if (MPackMatchString(redraw_command_name, "grid_scroll"))
         {
-            ScrollRegion(renderer, redraw_command_arr);
+            ScrollRegion(this, redraw_command_arr);
         }
         else if (MPackMatchString(redraw_command_name, "flush"))
         {
-            if (!renderer->ui_busy)
+            if (!this->ui_busy)
             {
-                DrawCursor(renderer);
+                DrawCursor(this);
             }
-            DrawBorderRectangles(renderer);
-            FinishDraw(renderer);
+            DrawBorderRectangles(this);
+            FinishDraw(this);
         }
     }
 }
 
-PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols)
+PixelSize Renderer::GridToPixelSize(int rows, int cols)
 {
-    int requested_width = static_cast<int>(ceilf(renderer->font_width) * cols);
-    int requested_height =
-        static_cast<int>(ceilf(renderer->font_height) * rows);
+    int requested_width = static_cast<int>(ceilf(this->font_width) * cols);
+    int requested_height = static_cast<int>(ceilf(this->font_height) * rows);
 
     // Adjust size to include title bar
     RECT adjusted_rect = {0, 0, requested_width, requested_height};
@@ -1177,14 +1173,14 @@ PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols)
                      .height = adjusted_rect.bottom - adjusted_rect.top};
 }
 
-GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height)
+GridSize Renderer::PixelsToGridSize(int width, int height)
 {
-    return GridSize{.rows = static_cast<int>(height / renderer->font_height),
-                    .cols = static_cast<int>(width / renderer->font_width)};
+    return GridSize{.rows = static_cast<int>(height / this->font_height),
+                    .cols = static_cast<int>(width / this->font_width)};
 }
 
-GridPoint RendererCursorToGridPoint(Renderer *renderer, int x, int y)
+GridPoint Renderer::CursorToGridPoint(int x, int y)
 {
-    return GridPoint{.row = static_cast<int>(y / renderer->font_height),
-                     .col = static_cast<int>(x / renderer->font_width)};
+    return GridPoint{.row = static_cast<int>(y / this->font_height),
+                     .col = static_cast<int>(x / this->font_width)};
 }

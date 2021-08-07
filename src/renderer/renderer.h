@@ -122,17 +122,13 @@ struct Renderer
     Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
              float monitor_dpi);
     ~Renderer();
+    void Attach();
+    void Resize(uint32_t width, uint32_t height);
+    void UpdateGuiFont(const char *guifont, size_t strlen);
+    void UpdateFont(float font_size, const char *font_string = "",
+                    int strlen = 0);
+    void Redraw(mpack_node_t params);
+    PixelSize GridToPixelSize(int rows, int cols);
+    GridSize PixelsToGridSize(int width, int height);
+    GridPoint CursorToGridPoint(int x, int y);
 };
-
-void RendererAttach(Renderer *renderer);
-
-void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
-void RendererUpdateGuiFont(Renderer *renderer, const char *guifont,
-                           size_t strlen);
-void RendererUpdateFont(Renderer *renderer, float font_size,
-                        const char *font_string = "", int strlen = 0);
-void RendererRedraw(Renderer *renderer, mpack_node_t params);
-
-PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols);
-GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height);
-GridPoint RendererCursorToGridPoint(Renderer *renderer, int x, int y);

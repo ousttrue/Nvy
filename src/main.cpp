@@ -71,14 +71,14 @@ struct Context
 
                 if (!guifont_buffer.empty())
                 {
-                    RendererUpdateGuiFont(renderer, guifont_buffer.data(),
-                                          strlen(guifont_buffer.data()));
+                    renderer->UpdateGuiFont(guifont_buffer.data(),
+                                            strlen(guifont_buffer.data()));
                 }
 
                 if (start_grid_size.rows != 0 && start_grid_size.cols != 0)
                 {
-                    PixelSize start_size = RendererGridToPixelSize(
-                        renderer, start_grid_size.rows, start_grid_size.cols);
+                    PixelSize start_size = renderer->GridToPixelSize(
+                        start_grid_size.rows, start_grid_size.cols);
                     RECT client_rect;
                     GetClientRect(hwnd, &client_rect);
                     MoveWindow(hwnd, client_rect.left, client_rect.top,
@@ -87,10 +87,9 @@ struct Context
 
                 // Attach the renderer now that the window size is
                 // determined
-                RendererAttach(renderer);
-                auto [rows, cols] = RendererPixelsToGridSize(
-                    renderer, renderer->pixel_size.width,
-                    renderer->pixel_size.height);
+                renderer->Attach();
+                auto [rows, cols] = renderer->PixelsToGridSize(
+                    renderer->pixel_size.width, renderer->pixel_size.height);
                 nvim->SendUIAttach(rows, cols);
 
                 if (start_maximized)
@@ -112,7 +111,7 @@ struct Context
         {
             if (MPackMatchString(result.notification.name, "redraw"))
             {
-                RendererRedraw(renderer, result.params);
+                renderer->Redraw(result.params);
             }
         }
     }
@@ -184,10 +183,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                          new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
             context->renderer->dpi_scale = current_dpi / 96.0f;
-            RendererUpdateFont(context->renderer,
-                               context->renderer->last_requested_font_size);
-            auto [rows, cols] = RendererPixelsToGridSize(
-                context->renderer, context->renderer->pixel_size.width,
+            context->renderer->UpdateFont(
+                context->renderer->last_requested_font_size);
+            auto [rows, cols] = context->renderer->PixelsToGridSize(
+                context->renderer->pixel_size.width,
                 context->renderer->pixel_size.height);
             if (rows != context->renderer->grid_rows ||
                 cols != context->renderer->grid_cols)
@@ -212,8 +211,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         return 0;
     case WM_RENDERER_FONT_UPDATE:
     {
-        auto [rows, cols] = RendererPixelsToGridSize(
-            context->renderer, context->renderer->pixel_size.width,
+        auto [rows, cols] = context->renderer->PixelsToGridSize(
+            context->renderer->pixel_size.width,
             context->renderer->pixel_size.height);
         context->nvim->SendResize(rows, cols);
     }
@@ -285,8 +284,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_MOUSEMOVE:
     {
         POINTS cursor_pos = MAKEPOINTS(lparam);
-        GridPoint grid_pos = RendererCursorToGridPoint(
-            context->renderer, cursor_pos.x, cursor_pos.y);
+        GridPoint grid_pos =
+            context->renderer->CursorToGridPoint(cursor_pos.x, cursor_pos.y);
         if (context->cached_cursor_grid_pos.col != grid_pos.col ||
             context->cached_cursor_grid_pos.row != grid_pos.row)
         {
@@ -326,8 +325,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_MBUTTONUP:
     {
         POINTS cursor_pos = MAKEPOINTS(lparam);
-        auto [row, col] = RendererCursorToGridPoint(context->renderer,
-                                                    cursor_pos.x, cursor_pos.y);
+        auto [row, col] =
+            context->renderer->CursorToGridPoint(cursor_pos.x, cursor_pos.y);
         if (msg == WM_LBUTTONDOWN)
         {
             context->nvim->SendMouseInput(MouseButton::Left, MouseAction::Press,
@@ -401,18 +400,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
         short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
         short scroll_amount = wheel_distance / WHEEL_DELTA;
-        auto [row, col] = RendererCursorToGridPoint(
-            context->renderer, client_point.x, client_point.y);
+        auto [row, col] = context->renderer->CursorToGridPoint(client_point.x,
+                                                               client_point.y);
         MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp
                                                : MouseAction::MouseWheelDown;
 
         if (should_resize_font)
         {
-            RendererUpdateFont(context->renderer,
-                               context->renderer->last_requested_font_size +
-                                   (scroll_amount * 2.0f));
-            auto [rows, cols] = RendererPixelsToGridSize(
-                context->renderer, context->renderer->pixel_size.width,
+            context->renderer->UpdateFont(
+                context->renderer->last_requested_font_size +
+                (scroll_amount * 2.0f));
+            auto [rows, cols] = context->renderer->PixelsToGridSize(
+                context->renderer->pixel_size.width,
                 context->renderer->pixel_size.height);
             if (rows != context->renderer->grid_rows ||
                 cols != context->renderer->grid_cols)
@@ -575,11 +574,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         {
             previous_width = context.saved_window_width;
             previous_height = context.saved_window_height;
-            auto [rows, cols] = RendererPixelsToGridSize(
-                context.renderer, context.saved_window_width,
-                context.saved_window_height);
-            RendererResize(context.renderer, context.saved_window_width,
-                           context.saved_window_height);
+            auto [rows, cols] = context.renderer->PixelsToGridSize(
+                context.saved_window_width, context.saved_window_height);
+            context.renderer->Resize(context.saved_window_width,
+                                     context.saved_window_height);
             context.nvim->SendResize(rows, cols);
         }
     }

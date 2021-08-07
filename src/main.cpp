@@ -532,13 +532,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         return 1;
     }
 
-    Renderer renderer{};
     Context context{.start_grid_size{.rows = static_cast<int>(rows),
                                      .cols = static_cast<int>(cols)},
                     .start_maximized = start_maximized,
 
                     .nvim = nullptr,
-                    .renderer = &renderer,
+                    .renderer = nullptr,
                     .saved_window_placement =
                         WINDOWPLACEMENT{.length = sizeof(WINDOWPLACEMENT)}};
 
@@ -560,8 +559,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                                         MONITOR_DEFAULTTONEAREST);
     GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling),
                      &(context.saved_dpi_scaling));
-    RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor,
-                       context.saved_dpi_scaling);
+
+    Renderer renderer(hwnd, disable_ligatures, linespace_factor,
+                      context.saved_dpi_scaling);
+    context.renderer = &renderer;
 
     MSG msg;
     uint32_t previous_width = 0, previous_height = 0;
@@ -583,7 +584,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         }
     }
 
-    RendererShutdown(&renderer);
     UnregisterClass(window_class_name, instance);
     DestroyWindow(hwnd);
 

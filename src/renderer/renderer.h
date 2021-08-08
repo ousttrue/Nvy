@@ -68,16 +68,12 @@ constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr int MAX_FONT_LENGTH = 128;
 constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
-struct GlyphDrawingEffect;
-struct GlyphRenderer;
 class Renderer
 {
-public:
     CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
-    Vec<HighlightAttributes> hl_attribs;
     Cursor cursor = {0};
 
-    GlyphRenderer *glyph_renderer = nullptr;
+    struct GlyphRenderer *glyph_renderer = nullptr;
 
     D3D_FEATURE_LEVEL d3d_feature_level;
     ID3D11Device2 *d3d_device = nullptr;
@@ -86,19 +82,20 @@ public:
     HANDLE swapchain_wait_handle = nullptr;
     ID2D1Factory5 *d2d_factory = nullptr;
     ID2D1Device4 *d2d_device = nullptr;
-    ID2D1DeviceContext4 *d2d_context = nullptr;
     ID2D1Bitmap1 *d2d_target_bitmap = nullptr;
     ID2D1SolidColorBrush *d2d_background_rect_brush = nullptr;
-    IDWriteFontFace1 *font_face = nullptr;
-    IDWriteFactory4 *dwrite_factory = nullptr;
-    IDWriteTextFormat *dwrite_text_format = nullptr;
 
     bool disable_ligatures = false;
     IDWriteTypography *dwrite_typography = nullptr;
 
-    float linespace_factor = 0;
-
+public:
+    ID2D1DeviceContext4 *d2d_context = nullptr;
+    Vec<HighlightAttributes> hl_attribs;
     float last_requested_font_size = 0;
+    IDWriteFactory4 *dwrite_factory = nullptr;
+    IDWriteTextFormat *dwrite_text_format = nullptr;
+    IDWriteFontFace1 *font_face = nullptr;
+    float linespace_factor = 0;
     wchar_t font[MAX_FONT_LENGTH] = {0};
     DWRITE_FONT_METRICS1 font_metrics = {};
     float dpi_scale = 0;
@@ -108,6 +105,7 @@ public:
     float font_ascent = 0;
     float font_descent = 0;
 
+private:
     D2D1_SIZE_U pixel_size = {0};
     int grid_rows = 0;
     int grid_cols = 0;
@@ -130,26 +128,42 @@ public:
     void Redraw(mpack_node_t params);
     PixelSize GridToPixelSize(int rows, int cols);
     GridSize PixelsToGridSize(int width, int height);
-    GridSize GridSize()
-    {
-        return PixelsToGridSize(pixel_size.width, pixel_size.height);
-    }
     GridPoint CursorToGridPoint(int x, int y);
-    bool SetDpiScale(float current_dpi, int *pRows, int *pCols)
-    {
-        dpi_scale = current_dpi / 96.0f;
-        UpdateFont(last_requested_font_size);
-        auto [rows, cols] = GridSize();
-        *pRows = rows;
-        *pCols = cols;
-        return rows != grid_rows || cols != grid_cols;
-    }
-    bool ResizeFont(float size, int *pRows, int *pCols)
-    {
-        UpdateFont(last_requested_font_size + size);
-        auto [rows, cols] = GridSize();
-        *pRows = rows;
-        *pCols = cols;
-        return rows != grid_rows || cols != grid_cols;
-    }
+    GridSize GridSize();
+    bool SetDpiScale(float current_dpi, int *pRows, int *pCols);
+    bool ResizeFont(float size, int *pRows, int *pCols);
+
+private:
+    void InitializeD2D();
+    void InitializeD3D();
+    void InitializeDWrite();
+    void InitializeWindowDependentResources();
+    void HandleDeviceLost();
+    void CopyFrontToBack();
+    float GetTextWidth(wchar_t *text, uint32_t length);
+    void UpdateDefaultColors(mpack_node_t default_colors);
+    void UpdateHighlightAttributes(mpack_node_t highlight_attribs);
+    uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);
+    uint32_t CreateBackgroundColor(HighlightAttributes *hl_attribs);
+    uint32_t CreateSpecialColor(HighlightAttributes *hl_attribs);
+    void ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
+                                  IDWriteTextLayout *text_layout, int start,
+                                  int end);
+    D2D1_RECT_F GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect);
+    void DrawBackgroundRect(D2D1_RECT_F rect, HighlightAttributes *hl_attribs);
+    void DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text, uint32_t length,
+                             HighlightAttributes *hl_attribs);
+    void DrawGridLine(int row);
+    void DrawCursor();
+    void DrawBorderRectangles();
+    void DrawGridLines(mpack_node_t grid_lines);
+    void UpdateGridSize(mpack_node_t grid_resize);
+    void UpdateCursorPos(mpack_node_t cursor_goto);
+    void UpdateCursorMode(mpack_node_t mode_change);
+    void UpdateCursorModeInfos(mpack_node_t mode_info_set_params);
+    void ScrollRegion(mpack_node_t scroll_region);
+    void SetGuiOptions(mpack_node_t option_set);
+    void ClearGrid();
+    void StartDraw();
+    void FinishDraw();
 };

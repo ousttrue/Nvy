@@ -13,7 +13,6 @@ set(Nvy_HEADERS
     "src/common/vec.h"
     "src/common/window_messages.h"
     "src/nvim/nvim.h"
-    "src/renderer/glyph_renderer.h"
     "src/renderer/renderer.h"
     "src/third_party/mpack/mpack.h"
 )
@@ -21,7 +20,6 @@ set(Nvy_HEADERS
 set(Nvy_SOURCES
     "src/main.cpp"
     "src/nvim/nvim.cpp"
-    "src/renderer/glyph_renderer.cpp"
     "src/renderer/renderer.cpp"
     "src/third_party/mpack/mpack.c"
 )

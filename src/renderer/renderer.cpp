@@ -69,24 +69,16 @@ void InitializeDWrite(Renderer *renderer)
 }
 
 void HandleDeviceLost(Renderer *renderer);
-void InitializeWindowDependentResources(Renderer *renderer, uint32_t width,
-                                        uint32_t height)
+void InitializeWindowDependentResources(Renderer *renderer)
 {
-    renderer->pixel_size.width = width;
-    renderer->pixel_size.height = height;
-
-    ID3D11RenderTargetView *null_views[] = {nullptr};
-    renderer->d3d_context->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
-                                              nullptr);
-    renderer->d2d_context->SetTarget(nullptr);
-    renderer->d3d_context->Flush();
 
     if (renderer->dxgi_swapchain)
     {
         renderer->d2d_target_bitmap->Release();
 
         HRESULT hr = renderer->dxgi_swapchain->ResizeBuffers(
-            2, width, height, DXGI_FORMAT_B8G8R8A8_UNORM,
+            2, renderer->pixel_size.width, renderer->pixel_size.height,
+            DXGI_FORMAT_B8G8R8A8_UNORM,
             DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT |
                 DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
 
@@ -98,8 +90,8 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width,
     else
     {
         DXGI_SWAP_CHAIN_DESC1 swapchain_desc{
-            .Width = width,
-            .Height = height,
+            .Width = renderer->pixel_size.width,
+            .Height = renderer->pixel_size.height,
             .Format = DXGI_FORMAT_B8G8R8A8_UNORM,
             .SampleDesc = {.Count = 1, .Quality = 0},
             .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
@@ -168,16 +160,18 @@ void HandleDeviceLost(Renderer *renderer)
     SafeRelease(&renderer->d2d_background_rect_brush);
     SafeRelease(&renderer->dwrite_factory);
     SafeRelease(&renderer->dwrite_text_format);
-    delete renderer->glyph_renderer;
+    if (renderer->glyph_renderer)
+    {
+        delete renderer->glyph_renderer;
+        renderer->glyph_renderer = nullptr;
+    }
 
     InitializeD2D(renderer);
     InitializeD3D(renderer);
     InitializeDWrite(renderer);
-    RECT client_rect;
-    GetClientRect(renderer->hwnd, &client_rect);
-    InitializeWindowDependentResources(
-        renderer, static_cast<uint32_t>(client_rect.right - client_rect.left),
-        static_cast<uint32_t>(client_rect.bottom - client_rect.top));
+    renderer->glyph_renderer = new GlyphRenderer(renderer);
+    renderer->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
+                         static_cast<int>(strlen(DEFAULT_FONT)));
 }
 
 Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
@@ -190,21 +184,17 @@ Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
     this->dpi_scale = monitor_dpi / 96.0f;
     this->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
-    InitializeD2D(this);
-    InitializeD3D(this);
-    InitializeDWrite(this);
-    this->glyph_renderer = new GlyphRenderer(this);
-    this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
-                     static_cast<int>(strlen(DEFAULT_FONT)));
+    HandleDeviceLost(this);
 }
 
 void Renderer::Attach()
 {
     RECT client_rect;
     GetClientRect(this->hwnd, &client_rect);
-    InitializeWindowDependentResources(
-        this, static_cast<uint32_t>(client_rect.right - client_rect.left),
-        static_cast<uint32_t>(client_rect.bottom - client_rect.top));
+    pixel_size.width =
+        static_cast<uint32_t>(client_rect.right - client_rect.left);
+    pixel_size.height =
+        static_cast<uint32_t>(client_rect.bottom - client_rect.top);
 }
 
 Renderer::~Renderer()
@@ -227,7 +217,8 @@ Renderer::~Renderer()
 
 void Renderer::Resize(uint32_t width, uint32_t height)
 {
-    InitializeWindowDependentResources(this, width, height);
+    pixel_size.width = width;
+    pixel_size.height = height;
 }
 
 float GetTextWidth(Renderer *renderer, wchar_t *text, uint32_t length)
@@ -1068,6 +1059,13 @@ void FinishDraw(Renderer *renderer)
 
     CopyFrontToBack(renderer);
 
+    // clear render target
+    ID3D11RenderTargetView *null_views[] = {nullptr};
+    renderer->d3d_context->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
+                                              nullptr);
+    renderer->d2d_context->SetTarget(nullptr);
+    renderer->d3d_context->Flush();
+
     if (hr == DXGI_ERROR_DEVICE_REMOVED)
     {
         HandleDeviceLost(renderer);
@@ -1076,6 +1074,33 @@ void FinishDraw(Renderer *renderer)
 
 void Renderer::Redraw(mpack_node_t params)
 {
+    if (!dxgi_swapchain)
+    {
+        //
+        // create swapchain resource
+        //
+        RECT client_rect;
+        GetClientRect(hwnd, &client_rect);
+        pixel_size.width =
+            static_cast<uint32_t>(client_rect.right - client_rect.left);
+        pixel_size.height =
+            static_cast<uint32_t>(client_rect.bottom - client_rect.top);
+        InitializeWindowDependentResources(this);
+    }
+    else
+    {
+        DXGI_SWAP_CHAIN_DESC desc;
+        dxgi_swapchain->GetDesc(&desc);
+        if (desc.BufferDesc.Width != pixel_size.width ||
+            desc.BufferDesc.Height != pixel_size.height)
+        {
+            //
+            // resize swapchain
+            //
+            InitializeWindowDependentResources(this);
+        }
+    }
+
     StartDraw(this);
 
     uint64_t redraw_commands_length = mpack_node_array_length(params);
@@ -1176,7 +1201,7 @@ PixelSize Renderer::GridToPixelSize(int rows, int cols)
 GridSize Renderer::PixelsToGridSize(int width, int height)
 {
     return ::GridSize{.rows = static_cast<int>(height / this->font_height),
-                    .cols = static_cast<int>(width / this->font_width)};
+                      .cols = static_cast<int>(width / this->font_width)};
 }
 
 GridPoint Renderer::CursorToGridPoint(int x, int y)

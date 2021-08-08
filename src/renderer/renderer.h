@@ -89,9 +89,7 @@ public:
     ID2D1DeviceContext4 *d2d_context = nullptr;
     ID2D1Bitmap1 *d2d_target_bitmap = nullptr;
     ID2D1SolidColorBrush *d2d_background_rect_brush = nullptr;
-
     IDWriteFontFace1 *font_face = nullptr;
-
     IDWriteFactory4 *dwrite_factory = nullptr;
     IDWriteTextFormat *dwrite_text_format = nullptr;
 

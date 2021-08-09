@@ -1,5 +1,6 @@
 #pragma once
 #include <wrl/client.h>
+#include <memory>
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
@@ -71,6 +72,8 @@ constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
 class Renderer
 {
+    std::unique_ptr<class DWriteImpl> _dwrite;
+
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Cursor _cursor = {0};
 
@@ -88,24 +91,8 @@ class Renderer
     ID2D1SolidColorBrush *_drawing_effect_brush;
     ID2D1SolidColorBrush *_temp_brush;
 
-    bool _disable_ligatures = false;
-    IDWriteTypography *_dwrite_typography = nullptr;
-
     ID2D1DeviceContext4 *_d2d_context = nullptr;
     Vec<HighlightAttributes> _hl_attribs;
-    float _last_requested_font_size = 0;
-    IDWriteFactory4 *_dwrite_factory = nullptr;
-    IDWriteTextFormat *_dwrite_text_format = nullptr;
-    IDWriteFontFace1 *_font_face = nullptr;
-    float _linespace_factor = 0;
-    wchar_t _font[MAX_FONT_LENGTH] = {0};
-    DWRITE_FONT_METRICS1 _font_metrics = {};
-    float _dpi_scale = 0;
-    float _font_size = 0;
-    float _font_height = 0;
-    float _font_width = 0;
-    float _font_ascent = 0;
-    float _font_descent = 0;
 
     D2D1_SIZE_U _pixel_size = {0};
     int _grid_rows = 0;
@@ -124,8 +111,7 @@ public:
     void Attach();
     void Resize(uint32_t width, uint32_t height);
     void UpdateGuiFont(const char *guifont, size_t strlen);
-    void UpdateFont(float font_size, const char *font_string = "",
-                    int strlen = 0);
+    void UpdateFont(float font_size, const char *font_string, int strlen);
     void Redraw(mpack_node_t params);
     PixelSize GridToPixelSize(int rows, int cols);
     GridSize PixelsToGridSize(int width, int height);
@@ -147,13 +133,9 @@ public:
 private:
     void InitializeD2D();
     void InitializeD3D();
-    void InitializeDWrite();
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
     void CopyFrontToBack();
-    float GetTextWidth(wchar_t *text, uint32_t length);
-    void UpdateFontMetrics(float font_size, const char *font_string,
-                           int strlen);
     void UpdateDefaultColors(mpack_node_t default_colors);
     void UpdateHighlightAttributes(mpack_node_t highlight_attribs);
     uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);

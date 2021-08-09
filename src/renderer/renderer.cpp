@@ -180,6 +180,229 @@ public:
     }
 };
 
+class DWriteImpl
+{
+public:
+    ComPtr<IDWriteFactory4> _dwrite_factory;
+
+private:
+    bool _disable_ligatures = false;
+    ComPtr<IDWriteTypography> _dwrite_typography;
+    ComPtr<IDWriteTextFormat> _dwrite_text_format;
+
+    float _last_requested_font_size = 0;
+    wchar_t _font[MAX_FONT_LENGTH] = {0};
+    ComPtr<IDWriteFontFace1> _font_face;
+    DWRITE_FONT_METRICS1 _font_metrics = {};
+    float _dpi_scale = 0;
+
+public:
+    float _font_size = 0;
+    float _font_height = 0;
+    float _font_width = 0;
+    float _font_ascent = 0;
+    float _font_descent = 0;
+    float _linespace_factor = 0;
+
+public:
+    DWriteImpl()
+    {
+    }
+    ~DWriteImpl()
+    {
+    }
+
+    static std::unique_ptr<DWriteImpl>
+    Create(bool disable_ligatures, float linespace_factor, float monitor_dpi)
+    {
+        ComPtr<IDWriteFactory4> dwrite_factory;
+        auto hr = DWriteCreateFactory(
+            DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory4),
+            reinterpret_cast<IUnknown **>(
+                dwrite_factory.ReleaseAndGetAddressOf()));
+        if (FAILED(hr))
+        {
+            return nullptr;
+        }
+
+        ComPtr<IDWriteTypography> dwrite_typography;
+        if (disable_ligatures)
+        {
+            hr = dwrite_factory->CreateTypography(&dwrite_typography);
+            if (FAILED(hr))
+            {
+                return nullptr;
+            }
+
+            hr = dwrite_typography->AddFontFeature(DWRITE_FONT_FEATURE{
+                .nameTag = DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES,
+                .parameter = 0});
+            if (FAILED(hr))
+            {
+                return nullptr;
+            }
+        }
+
+        auto p = std::unique_ptr<DWriteImpl>(new DWriteImpl());
+        p->_disable_ligatures = disable_ligatures;
+        p->_linespace_factor = linespace_factor;
+        p->_dpi_scale = monitor_dpi / 96.0f;
+        p->_dwrite_factory = dwrite_factory;
+        p->_dwrite_typography = dwrite_typography;
+        return p;
+    }
+
+    void SetDpiScale(float current_dpi)
+    {
+        _dpi_scale = current_dpi / 96.0f;
+        UpdateFont(_last_requested_font_size);
+    }
+
+    void ResizeFont(float size)
+    {
+        UpdateFont(_last_requested_font_size + size);
+    }
+
+    void UpdateFont(float font_size, const char *font_string = "",
+                    int strlen = 0)
+    {
+        this->_dwrite_text_format.Reset();
+        this->UpdateFontMetrics(font_size, font_string, strlen);
+    }
+
+    void UpdateFontMetrics(float font_size, const char *font_string, int strlen)
+    {
+        font_size = max(5.0f, min(font_size, 150.0f));
+        this->_last_requested_font_size = font_size;
+
+        ComPtr<IDWriteFontCollection> font_collection;
+        WIN_CHECK(
+            this->_dwrite_factory->GetSystemFontCollection(&font_collection));
+
+        int wstrlen =
+            MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
+        if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH)
+        {
+            MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, this->_font,
+                                MAX_FONT_LENGTH - 1);
+            this->_font[wstrlen] = L'\0';
+        }
+
+        uint32_t index;
+        BOOL exists;
+        font_collection->FindFamilyName(this->_font, &index, &exists);
+
+        const wchar_t *fallback_font = L"Consolas";
+        if (!exists)
+        {
+            font_collection->FindFamilyName(fallback_font, &index, &exists);
+            memcpy(this->_font, fallback_font,
+                   (wcslen(fallback_font) + 1) * sizeof(wchar_t));
+        }
+
+        ComPtr<IDWriteFontFamily> font_family;
+        WIN_CHECK(font_collection->GetFontFamily(index, &font_family));
+
+        ComPtr<IDWriteFont> write_font;
+        WIN_CHECK(font_family->GetFirstMatchingFont(
+            DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL, &write_font));
+
+        ComPtr<IDWriteFontFace> font_face;
+        WIN_CHECK(write_font->CreateFontFace(&font_face));
+        WIN_CHECK(
+            font_face->QueryInterface<IDWriteFontFace1>(&this->_font_face));
+
+        this->_font_face->GetMetrics(&this->_font_metrics);
+
+        uint16_t glyph_index;
+        constexpr uint32_t codepoint = L'A';
+        WIN_CHECK(
+            this->_font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
+
+        int32_t glyph_advance_in_em;
+        WIN_CHECK(this->_font_face->GetDesignGlyphAdvances(
+            1, &glyph_index, &glyph_advance_in_em));
+
+        float desired_height =
+            font_size * this->_dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
+        float width_advance = static_cast<float>(glyph_advance_in_em) /
+                              this->_font_metrics.designUnitsPerEm;
+        float desired_width = desired_height * width_advance;
+
+        // We need the width to be aligned on a per-pixel boundary, thus we will
+        // roundf the desired_width and calculate the font size given the new
+        // exact width
+        this->_font_width = roundf(desired_width);
+        this->_font_size = this->_font_width / width_advance;
+        float frac_font_ascent =
+            (this->_font_size * this->_font_metrics.ascent) /
+            this->_font_metrics.designUnitsPerEm;
+        float frac_font_descent =
+            (this->_font_size * this->_font_metrics.descent) /
+            this->_font_metrics.designUnitsPerEm;
+        float linegap = (this->_font_size * this->_font_metrics.lineGap) /
+                        this->_font_metrics.designUnitsPerEm;
+        float half_linegap = linegap / 2.0f;
+        this->_font_ascent = ceilf(frac_font_ascent + half_linegap);
+        this->_font_descent = ceilf(frac_font_descent + half_linegap);
+        this->_font_height = this->_font_ascent + this->_font_descent;
+        this->_font_height *= this->_linespace_factor;
+
+        WIN_CHECK(this->_dwrite_factory->CreateTextFormat(
+            this->_font, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+            this->_font_size, L"en-us", &this->_dwrite_text_format));
+
+        WIN_CHECK(this->_dwrite_text_format->SetLineSpacing(
+            DWRITE_LINE_SPACING_METHOD_UNIFORM, this->_font_height,
+            this->_font_ascent * this->_linespace_factor));
+        WIN_CHECK(this->_dwrite_text_format->SetParagraphAlignment(
+            DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
+        WIN_CHECK(this->_dwrite_text_format->SetWordWrapping(
+            DWRITE_WORD_WRAPPING_NO_WRAP));
+    }
+
+    float GetTextWidth(wchar_t *text, uint32_t length)
+    {
+        // Create dummy text format to hit test the width of the font
+        ComPtr<IDWriteTextLayout> test_text_layout;
+        WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
+            text, length, this->_dwrite_text_format.Get(), 0.0f, 0.0f,
+            &test_text_layout));
+
+        DWRITE_HIT_TEST_METRICS metrics;
+        float _;
+        WIN_CHECK(
+            test_text_layout->HitTestTextPosition(0, 0, &_, &_, &metrics));
+        return metrics.width;
+    }
+
+    ComPtr<IDWriteTextLayout1> GetTextLayout(const D2D1_RECT_F &rect,
+                                             wchar_t *text, uint32_t length)
+    {
+        ComPtr<IDWriteTextLayout> temp_text_layout;
+        WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
+            text, length, this->_dwrite_text_format.Get(),
+            rect.right - rect.left, rect.bottom - rect.top, &temp_text_layout));
+        ComPtr<IDWriteTextLayout1> text_layout;
+        temp_text_layout.As(&text_layout);
+        return text_layout;
+    }
+
+    void
+    SetTypographyIfNotLigatures(const ComPtr<IDWriteTextLayout> &text_layout,
+                                uint32_t length)
+    {
+        if (this->_disable_ligatures)
+        {
+            text_layout->SetTypography(
+                this->_dwrite_typography.Get(),
+                DWRITE_TEXT_RANGE{.startPosition = 0, .length = length});
+        }
+    }
+};
+
 void Renderer::InitializeD2D()
 {
     D2D1_FACTORY_OPTIONS options{};
@@ -233,21 +456,6 @@ void Renderer::InitializeD3D()
         D2D1::ColorF(D2D1::ColorF::Black), &_temp_brush));
 
     SafeRelease(&dxgi_device);
-}
-
-void Renderer::InitializeDWrite()
-{
-    WIN_CHECK(DWriteCreateFactory(
-        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory4),
-        reinterpret_cast<IUnknown **>(&this->_dwrite_factory)));
-    if (this->_disable_ligatures)
-    {
-        WIN_CHECK(
-            this->_dwrite_factory->CreateTypography(&this->_dwrite_typography));
-        WIN_CHECK(this->_dwrite_typography->AddFontFeature(DWRITE_FONT_FEATURE{
-            .nameTag = DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES,
-            .parameter = 0}));
-    }
 }
 
 void Renderer::InitializeWindowDependentResources()
@@ -337,8 +545,7 @@ void Renderer::HandleDeviceLost()
     SafeRelease(&this->_d2d_context);
     SafeRelease(&this->_d2d_target_bitmap);
     SafeRelease(&this->_d2d_background_rect_brush);
-    SafeRelease(&this->_dwrite_factory);
-    SafeRelease(&this->_dwrite_text_format);
+
     if (this->_glyph_renderer)
     {
         delete this->_glyph_renderer;
@@ -347,7 +554,6 @@ void Renderer::HandleDeviceLost()
 
     this->InitializeD2D();
     this->InitializeD3D();
-    this->InitializeDWrite();
     auto hr = GlyphRenderer::Create(&this->_glyph_renderer);
     assert(hr == S_OK);
     this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
@@ -356,12 +562,10 @@ void Renderer::HandleDeviceLost()
 
 Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
                    float monitor_dpi)
+    : _dwrite(
+          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi))
 {
     this->_hwnd = hwnd;
-    this->_disable_ligatures = disable_ligatures;
-    this->_linespace_factor = linespace_factor;
-
-    this->_dpi_scale = monitor_dpi / 96.0f;
     this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
     this->HandleDeviceLost();
@@ -387,8 +591,7 @@ Renderer::~Renderer()
     SafeRelease(&this->_d2d_context);
     SafeRelease(&this->_d2d_target_bitmap);
     SafeRelease(&this->_d2d_background_rect_brush);
-    SafeRelease(&this->_dwrite_factory);
-    SafeRelease(&this->_dwrite_text_format);
+    _dwrite.reset();
     delete this->_glyph_renderer;
 
     free(this->_grid_chars);
@@ -399,125 +602,6 @@ void Renderer::Resize(uint32_t width, uint32_t height)
 {
     _pixel_size.width = width;
     _pixel_size.height = height;
-}
-
-float Renderer::GetTextWidth(wchar_t *text, uint32_t length)
-{
-    // Create dummy text format to hit test the width of the font
-    IDWriteTextLayout *test_text_layout = nullptr;
-    WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
-        text, length, this->_dwrite_text_format, 0.0f, 0.0f,
-        &test_text_layout));
-
-    DWRITE_HIT_TEST_METRICS metrics;
-    float _;
-    WIN_CHECK(test_text_layout->HitTestTextPosition(0, 0, &_, &_, &metrics));
-    test_text_layout->Release();
-
-    return metrics.width;
-}
-
-void Renderer::UpdateFontMetrics(float font_size, const char *font_string,
-                                 int strlen)
-{
-    font_size = max(5.0f, min(font_size, 150.0f));
-    this->_last_requested_font_size = font_size;
-
-    IDWriteFontCollection *font_collection;
-    WIN_CHECK(this->_dwrite_factory->GetSystemFontCollection(&font_collection));
-
-    int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
-    if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH)
-    {
-        MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, this->_font,
-                            MAX_FONT_LENGTH - 1);
-        this->_font[wstrlen] = L'\0';
-    }
-
-    uint32_t index;
-    BOOL exists;
-    font_collection->FindFamilyName(this->_font, &index, &exists);
-
-    const wchar_t *fallback_font = L"Consolas";
-    if (!exists)
-    {
-        font_collection->FindFamilyName(fallback_font, &index, &exists);
-        memcpy(this->_font, fallback_font,
-               (wcslen(fallback_font) + 1) * sizeof(wchar_t));
-    }
-
-    IDWriteFontFamily *font_family;
-    WIN_CHECK(font_collection->GetFontFamily(index, &font_family));
-
-    IDWriteFont *write_font;
-    WIN_CHECK(font_family->GetFirstMatchingFont(
-        DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-        DWRITE_FONT_STYLE_NORMAL, &write_font));
-
-    IDWriteFontFace *font_face;
-    WIN_CHECK(write_font->CreateFontFace(&font_face));
-    WIN_CHECK(font_face->QueryInterface<IDWriteFontFace1>(&this->_font_face));
-
-    this->_font_face->GetMetrics(&this->_font_metrics);
-
-    uint16_t glyph_index;
-    constexpr uint32_t codepoint = L'A';
-    WIN_CHECK(this->_font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
-
-    int32_t glyph_advance_in_em;
-    WIN_CHECK(this->_font_face->GetDesignGlyphAdvances(1, &glyph_index,
-                                                       &glyph_advance_in_em));
-
-    float desired_height =
-        font_size * this->_dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
-    float width_advance = static_cast<float>(glyph_advance_in_em) /
-                          this->_font_metrics.designUnitsPerEm;
-    float desired_width = desired_height * width_advance;
-
-    // We need the width to be aligned on a per-pixel boundary, thus we will
-    // roundf the desired_width and calculate the font size given the new exact
-    // width
-    this->_font_width = roundf(desired_width);
-    this->_font_size = this->_font_width / width_advance;
-    float frac_font_ascent = (this->_font_size * this->_font_metrics.ascent) /
-                             this->_font_metrics.designUnitsPerEm;
-    float frac_font_descent = (this->_font_size * this->_font_metrics.descent) /
-                              this->_font_metrics.designUnitsPerEm;
-    float linegap = (this->_font_size * this->_font_metrics.lineGap) /
-                    this->_font_metrics.designUnitsPerEm;
-    float half_linegap = linegap / 2.0f;
-    this->_font_ascent = ceilf(frac_font_ascent + half_linegap);
-    this->_font_descent = ceilf(frac_font_descent + half_linegap);
-    this->_font_height = this->_font_ascent + this->_font_descent;
-    this->_font_height *= this->_linespace_factor;
-
-    WIN_CHECK(this->_dwrite_factory->CreateTextFormat(
-        this->_font, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
-        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, this->_font_size,
-        L"en-us", &this->_dwrite_text_format));
-
-    WIN_CHECK(this->_dwrite_text_format->SetLineSpacing(
-        DWRITE_LINE_SPACING_METHOD_UNIFORM, this->_font_height,
-        this->_font_ascent * this->_linespace_factor));
-    WIN_CHECK(this->_dwrite_text_format->SetParagraphAlignment(
-        DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
-    WIN_CHECK(this->_dwrite_text_format->SetWordWrapping(
-        DWRITE_WORD_WRAPPING_NO_WRAP));
-
-    SafeRelease(&font_face);
-    SafeRelease(&write_font);
-    SafeRelease(&font_family);
-    SafeRelease(&font_collection);
-}
-
-void Renderer::UpdateFont(float font_size, const char *font_string, int strlen)
-{
-    if (this->_dwrite_text_format)
-    {
-        this->_dwrite_text_format->Release();
-    }
-
-    this->UpdateFontMetrics(font_size, font_string, strlen);
 }
 
 void Renderer::UpdateDefaultColors(mpack_node_t default_colors)
@@ -706,11 +790,8 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
                                    uint32_t length,
                                    HighlightAttributes *hl_attribs)
 {
-    IDWriteTextLayout *text_layout = nullptr;
-    WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
-        text, length, this->_dwrite_text_format, rect.right - rect.left,
-        rect.bottom - rect.top, &text_layout));
-    this->ApplyHighlightAttributes(hl_attribs, text_layout, 0, 1);
+    auto text_layout = _dwrite->GetTextLayout(rect, text, length);
+    this->ApplyHighlightAttributes(hl_attribs, text_layout.Get(), 0, 1);
 
     this->_d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
     text_layout->Draw(this, this->_glyph_renderer, rect.left, rect.top);
@@ -723,17 +804,13 @@ void Renderer::DrawGridLine(int row)
     int base = row * this->_grid_cols;
 
     D2D1_RECT_F rect{.left = 0.0f,
-                     .top = row * this->_font_height,
-                     .right = this->_grid_cols * this->_font_width,
-                     .bottom = (row * this->_font_height) + this->_font_height};
+                     .top = row * _dwrite->_font_height,
+                     .right = this->_grid_cols * _dwrite->_font_width,
+                     .bottom =
+                         (row * _dwrite->_font_height) + _dwrite->_font_height};
 
-    IDWriteTextLayout *temp_text_layout = nullptr;
-    WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
-        &this->_grid_chars[base], this->_grid_cols, this->_dwrite_text_format,
-        rect.right - rect.left, rect.bottom - rect.top, &temp_text_layout));
-    IDWriteTextLayout1 *text_layout;
-    temp_text_layout->QueryInterface<IDWriteTextLayout1>(&text_layout);
-    temp_text_layout->Release();
+    auto text_layout = _dwrite->GetTextLayout(rect, &this->_grid_chars[base],
+                                              this->_grid_cols);
 
     uint16_t hl_attrib_id = this->_grid_cell_properties[base].hl_attrib_id;
     int col_offset = 0;
@@ -743,11 +820,11 @@ void Renderer::DrawGridLine(int row)
         if (this->_grid_cell_properties[base + i].is_wide_char)
         {
             float char_width =
-                this->GetTextWidth(&this->_grid_chars[base + i], 2);
+                _dwrite->GetTextWidth(&this->_grid_chars[base + i], 2);
             DWRITE_TEXT_RANGE range{.startPosition = static_cast<uint32_t>(i),
                                     .length = 1};
             text_layout->SetCharacterSpacing(
-                0, (this->_font_width * 2) - char_width, 0, range);
+                0, (_dwrite->_font_width * 2) - char_width, 0, range);
         }
 
         // Add spacing for unicode chars. These characters are still single char
@@ -756,13 +833,13 @@ void Renderer::DrawGridLine(int row)
         else if (this->_grid_chars[base + i] > 0xFF)
         {
             float char_width =
-                this->GetTextWidth(&this->_grid_chars[base + i], 1);
-            if (abs(char_width - this->_font_width) > 0.01f)
+                _dwrite->GetTextWidth(&this->_grid_chars[base + i], 1);
+            if (abs(char_width - _dwrite->_font_width) > 0.01f)
             {
                 DWRITE_TEXT_RANGE range{
                     .startPosition = static_cast<uint32_t>(i), .length = 1};
                 text_layout->SetCharacterSpacing(
-                    0, this->_font_width - char_width, 0, range);
+                    0, _dwrite->_font_width - char_width, 0, range);
             }
         }
 
@@ -770,15 +847,16 @@ void Renderer::DrawGridLine(int row)
         // if so draw until this point and continue with the new attributes
         if (this->_grid_cell_properties[base + i].hl_attrib_id != hl_attrib_id)
         {
-            D2D1_RECT_F bg_rect{.left = col_offset * this->_font_width,
-                                .top = row * this->_font_height,
-                                .right = col_offset * this->_font_width +
-                                         this->_font_width * (i - col_offset),
-                                .bottom = (row * this->_font_height) +
-                                          this->_font_height};
+            D2D1_RECT_F bg_rect{.left = col_offset * _dwrite->_font_width,
+                                .top = row * _dwrite->_font_height,
+                                .right =
+                                    col_offset * _dwrite->_font_width +
+                                    _dwrite->_font_width * (i - col_offset),
+                                .bottom = (row * _dwrite->_font_height) +
+                                          _dwrite->_font_height};
             this->DrawBackgroundRect(bg_rect, &this->_hl_attribs[hl_attrib_id]);
             this->ApplyHighlightAttributes(&this->_hl_attribs[hl_attrib_id],
-                                           text_layout, col_offset, i);
+                                           text_layout.Get(), col_offset, i);
 
             hl_attrib_id = this->_grid_cell_properties[base + i].hl_attrib_id;
             col_offset = i;
@@ -789,23 +867,17 @@ void Renderer::DrawGridLine(int row)
     // draw, but potentially more in case the last X columns share the same
     // hl_attrib
     D2D1_RECT_F last_rect = rect;
-    last_rect.left = col_offset * this->_font_width;
+    last_rect.left = col_offset * _dwrite->_font_width;
     this->DrawBackgroundRect(last_rect, &this->_hl_attribs[hl_attrib_id]);
     this->ApplyHighlightAttributes(&this->_hl_attribs[hl_attrib_id],
-                                   text_layout, col_offset, this->_grid_cols);
+                                   text_layout.Get(), col_offset,
+                                   this->_grid_cols);
 
     this->_d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
-    if (this->_disable_ligatures)
-    {
-        text_layout->SetTypography(
-            this->_dwrite_typography,
-            DWRITE_TEXT_RANGE{.startPosition = 0,
-                              .length =
-                                  static_cast<uint32_t>(this->_grid_cols)});
-    }
+    _dwrite->SetTypographyIfNotLigatures(
+        text_layout, static_cast<uint32_t>(this->_grid_cols));
     text_layout->Draw(this, this->_glyph_renderer, 0.0f, rect.top);
     this->_d2d_context->PopAxisAlignedClip();
-    text_layout->Release();
 }
 
 void Renderer::DrawGridLines(mpack_node_t grid_lines)
@@ -926,13 +998,13 @@ void Renderer::DrawCursor()
         cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
     }
 
-    D2D1_RECT_F cursor_rect{.left = this->_cursor.col * this->_font_width,
-                            .top = this->_cursor.row * this->_font_height,
-                            .right =
-                                this->_cursor.col * this->_font_width +
-                                this->_font_width * double_width_char_factor,
-                            .bottom = (this->_cursor.row * this->_font_height) +
-                                      this->_font_height};
+    D2D1_RECT_F cursor_rect{
+        .left = this->_cursor.col * _dwrite->_font_width,
+        .top = this->_cursor.row * _dwrite->_font_height,
+        .right = this->_cursor.col * _dwrite->_font_width +
+                 _dwrite->_font_width * double_width_char_factor,
+        .bottom = (this->_cursor.row * _dwrite->_font_height) +
+                  _dwrite->_font_height};
     D2D1_RECT_F cursor_fg_rect = this->GetCursorForegroundRect(cursor_rect);
     this->DrawBackgroundRect(cursor_fg_rect, &cursor_hl_attribs);
 
@@ -1090,8 +1162,8 @@ void Renderer::ScrollRegion(mpack_node_t scroll_region)
 
 void Renderer::DrawBorderRectangles()
 {
-    float left_border = this->_font_width * this->_grid_cols;
-    float top_border = this->_font_height * this->_grid_rows;
+    float left_border = _dwrite->_font_width * this->_grid_cols;
+    float top_border = _dwrite->_font_height * this->_grid_rows;
 
     if (left_border != static_cast<float>(this->_pixel_size.width))
     {
@@ -1177,8 +1249,8 @@ void Renderer::ClearGrid()
            this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
     D2D1_RECT_F rect{.left = 0.0f,
                      .top = 0.0f,
-                     .right = this->_grid_cols * this->_font_width,
-                     .bottom = this->_grid_rows * this->_font_height};
+                     .right = this->_grid_cols * _dwrite->_font_width,
+                     .bottom = this->_grid_rows * _dwrite->_font_height};
     this->DrawBackgroundRect(rect, &this->_hl_attribs[0]);
 }
 
@@ -1345,8 +1417,9 @@ void Renderer::Redraw(mpack_node_t params)
 
 PixelSize Renderer::GridToPixelSize(int rows, int cols)
 {
-    int requested_width = static_cast<int>(ceilf(this->_font_width) * cols);
-    int requested_height = static_cast<int>(ceilf(this->_font_height) * rows);
+    int requested_width = static_cast<int>(ceilf(_dwrite->_font_width) * cols);
+    int requested_height =
+        static_cast<int>(ceilf(_dwrite->_font_height) * rows);
 
     // Adjust size to include title bar
     RECT adjusted_rect = {0, 0, requested_width, requested_height};
@@ -1357,14 +1430,14 @@ PixelSize Renderer::GridToPixelSize(int rows, int cols)
 
 GridSize Renderer::PixelsToGridSize(int width, int height)
 {
-    return ::GridSize{.rows = static_cast<int>(height / this->_font_height),
-                      .cols = static_cast<int>(width / this->_font_width)};
+    return ::GridSize{.rows = static_cast<int>(height / _dwrite->_font_height),
+                      .cols = static_cast<int>(width / _dwrite->_font_width)};
 }
 
 GridPoint Renderer::CursorToGridPoint(int x, int y)
 {
-    return GridPoint{.row = static_cast<int>(y / this->_font_height),
-                     .col = static_cast<int>(x / this->_font_width)};
+    return GridPoint{.row = static_cast<int>(y / _dwrite->_font_height),
+                     .col = static_cast<int>(x / _dwrite->_font_width)};
 }
 
 GridSize Renderer::GridSize()
@@ -1374,8 +1447,7 @@ GridSize Renderer::GridSize()
 
 bool Renderer::SetDpiScale(float current_dpi, int *pRows, int *pCols)
 {
-    _dpi_scale = current_dpi / 96.0f;
-    UpdateFont(_last_requested_font_size);
+    _dwrite->SetDpiScale(current_dpi);
     auto [rows, cols] = GridSize();
     *pRows = rows;
     *pCols = cols;
@@ -1384,7 +1456,7 @@ bool Renderer::SetDpiScale(float current_dpi, int *pRows, int *pCols)
 
 bool Renderer::ResizeFont(float size, int *pRows, int *pCols)
 {
-    UpdateFont(_last_requested_font_size + size);
+    _dwrite->ResizeFont(size);
     auto [rows, cols] = GridSize();
     *pRows = rows;
     *pCols = cols;
@@ -1420,8 +1492,8 @@ HRESULT Renderer::DrawGlyphRun(
         DWRITE_GLYPH_IMAGE_FORMATS_TIFF |
         DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8;
 
-    IDWriteColorGlyphRunEnumerator1 *glyph_run_enumerator;
-    hr = this->_dwrite_factory->TranslateColorGlyphRun(
+    ComPtr<IDWriteColorGlyphRunEnumerator1> glyph_run_enumerator;
+    hr = _dwrite->_dwrite_factory->TranslateColorGlyphRun(
         D2D1_POINT_2F{.x = baseline_origin_x, .y = baseline_origin_y},
         glyph_run, glyph_run_description, supported_formats, measuring_mode,
         nullptr, 0, &glyph_run_enumerator);
@@ -1485,12 +1557,13 @@ HRESULT Renderer::DrawGlyphRun(
                 this->_d2d_context->PushAxisAlignedClip(
                     D2D1_RECT_F{
                         .left = current_baseline_origin.x,
-                        .top = current_baseline_origin.y - this->_font_ascent,
+                        .top =
+                            current_baseline_origin.y - _dwrite->_font_ascent,
                         .right = current_baseline_origin.x +
                                  (color_run->glyphRun.glyphCount * 2 *
-                                  this->_font_width),
+                                  _dwrite->_font_width),
                         .bottom =
-                            current_baseline_origin.y + this->_font_descent,
+                            current_baseline_origin.y + _dwrite->_font_descent,
                     },
                     D2D1_ANTIALIAS_MODE_ALIASED);
                 this->_d2d_context->DrawGlyphRun(
@@ -1543,4 +1616,9 @@ HRESULT Renderer::GetCurrentTransform(DWRITE_MATRIX *transform)
     this->_d2d_context->GetTransform(
         reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
     return S_OK;
+}
+
+void Renderer::UpdateFont(float font_size, const char *font_string, int strlen)
+{
+    _dwrite->UpdateFont(font_size, font_string, strlen);
 }

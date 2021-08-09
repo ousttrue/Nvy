@@ -403,60 +403,77 @@ public:
     }
 };
 
-void Renderer::InitializeD2D()
+class DeviceImpl
 {
-    D2D1_FACTORY_OPTIONS options{};
+public:
+    ComPtr<ID3D11Device2> _d3d_device;
+    ComPtr<ID3D11DeviceContext2> _d3d_context;
+
+    ComPtr<ID2D1Factory5> _d2d_factory;
+    ComPtr<ID2D1Device4> _d2d_device;
+    ComPtr<ID2D1DeviceContext4> _d2d_context;
+    ComPtr<ID2D1SolidColorBrush> _d2d_background_rect_brush;
+    ComPtr<ID2D1SolidColorBrush> _drawing_effect_brush;
+    ComPtr<ID2D1SolidColorBrush> _temp_brush;
+
+public:
+    static std::unique_ptr<DeviceImpl> Create()
+    {
+        uint32_t flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 #ifndef NDEBUG
-    options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
+        flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
-    WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, options,
-                                &this->_d2d_factory));
-}
+        // Force DirectX 11.1
+        D3D_FEATURE_LEVEL d3d_feature_level;
+        ComPtr<ID3D11Device> temp_device;
+        ComPtr<ID3D11DeviceContext> temp_context;
+        D3D_FEATURE_LEVEL feature_levels[] = {
+            D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
+            D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,
+            D3D_FEATURE_LEVEL_9_1};
+        WIN_CHECK(D3D11CreateDevice(
+            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, feature_levels,
+            ARRAYSIZE(feature_levels), D3D11_SDK_VERSION, &temp_device,
+            &d3d_feature_level, &temp_context));
 
-void Renderer::InitializeD3D()
-{
-    uint32_t flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+        auto p = std::unique_ptr<DeviceImpl>(new DeviceImpl);
+
+        WIN_CHECK(temp_device.As(&p->_d3d_device));
+        WIN_CHECK(temp_context.As(&p->_d3d_context));
+
+        D2D1_FACTORY_OPTIONS options{};
 #ifndef NDEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
+        options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
 #endif
 
-    // Force DirectX 11.1
-    ID3D11Device *temp_device;
-    ID3D11DeviceContext *temp_context;
-    D3D_FEATURE_LEVEL feature_levels[] = {
-        D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
-        D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,
-        D3D_FEATURE_LEVEL_9_1};
-    WIN_CHECK(D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, feature_levels,
-        ARRAYSIZE(feature_levels), D3D11_SDK_VERSION, &temp_device,
-        &this->_d3d_feature_level, &temp_context));
-    WIN_CHECK(temp_device->QueryInterface(
-        __uuidof(ID3D11Device2),
-        reinterpret_cast<void **>(&this->_d3d_device)));
-    WIN_CHECK(temp_context->QueryInterface(
-        __uuidof(ID3D11DeviceContext2),
-        reinterpret_cast<void **>(&this->_d3d_context)));
+        WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, options,
+                                    p->_d2d_factory.ReleaseAndGetAddressOf()));
 
-    IDXGIDevice3 *dxgi_device;
-    WIN_CHECK(this->_d3d_device->QueryInterface(
-        __uuidof(IDXGIDevice3), reinterpret_cast<void **>(&dxgi_device)));
-    WIN_CHECK(
-        this->_d2d_factory->CreateDevice(dxgi_device, &this->_d2d_device));
-    WIN_CHECK(this->_d2d_device->CreateDeviceContext(
-        D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS,
-        &this->_d2d_context));
-    WIN_CHECK(this->_d2d_context->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF::Black), &this->_d2d_background_rect_brush));
+        ComPtr<IDXGIDevice3> dxgi_device;
+        WIN_CHECK(p->_d3d_device.As(&dxgi_device));
+        WIN_CHECK(
+            p->_d2d_factory->CreateDevice(dxgi_device.Get(), &p->_d2d_device));
+        WIN_CHECK(p->_d2d_device->CreateDeviceContext(
+            D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS,
+            &p->_d2d_context));
 
-    WIN_CHECK(_d2d_context->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF::Black), &_drawing_effect_brush));
-    WIN_CHECK(_d2d_context->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF::Black), &_temp_brush));
+        WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
+            D2D1::ColorF(D2D1::ColorF::Black), &p->_d2d_background_rect_brush));
+        WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
+            D2D1::ColorF(D2D1::ColorF::Black), &p->_drawing_effect_brush));
+        WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
+            D2D1::ColorF(D2D1::ColorF::Black), &p->_temp_brush));
 
-    SafeRelease(&dxgi_device);
-}
+        return p;
+    }
+};
+
+class SwapchainImpl
+{
+
+};
 
 void Renderer::InitializeWindowDependentResources()
 {
@@ -490,18 +507,17 @@ void Renderer::InitializeWindowDependentResources()
             .Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT |
                      DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING};
 
-        IDXGIDevice3 *dxgi_device;
-        WIN_CHECK(this->_d3d_device->QueryInterface(
-            __uuidof(IDXGIDevice3), reinterpret_cast<void **>(&dxgi_device)));
-        IDXGIAdapter *dxgi_adapter;
+        ComPtr<IDXGIDevice3> dxgi_device;
+        WIN_CHECK(_device->_d3d_device.As(&dxgi_device));
+        ComPtr<IDXGIAdapter> dxgi_adapter;
         WIN_CHECK(dxgi_device->GetAdapter(&dxgi_adapter));
-        IDXGIFactory2 *dxgi_factory;
+        ComPtr<IDXGIFactory2> dxgi_factory;
         WIN_CHECK(dxgi_adapter->GetParent(IID_PPV_ARGS(&dxgi_factory)));
 
-        IDXGISwapChain1 *dxgi_swapchain_temp;
+        ComPtr<IDXGISwapChain1> dxgi_swapchain_temp;
         WIN_CHECK(dxgi_factory->CreateSwapChainForHwnd(
-            this->_d3d_device, this->_hwnd, &swapchain_desc, nullptr, nullptr,
-            &dxgi_swapchain_temp));
+            _device->_d3d_device.Get(), this->_hwnd, &swapchain_desc, nullptr,
+            nullptr, &dxgi_swapchain_temp));
         WIN_CHECK(dxgi_factory->MakeWindowAssociation(this->_hwnd,
                                                       DXGI_MWA_NO_ALT_ENTER));
         WIN_CHECK(dxgi_swapchain_temp->QueryInterface(
@@ -511,11 +527,6 @@ void Renderer::InitializeWindowDependentResources()
         WIN_CHECK(this->_dxgi_swapchain->SetMaximumFrameLatency(1));
         this->_swapchain_wait_handle =
             this->_dxgi_swapchain->GetFrameLatencyWaitableObject();
-
-        SafeRelease(&dxgi_swapchain_temp);
-        SafeRelease(&dxgi_device);
-        SafeRelease(&dxgi_adapter);
-        SafeRelease(&dxgi_factory);
     }
 
     constexpr D2D1_BITMAP_PROPERTIES1 target_bitmap_properties{
@@ -525,26 +536,20 @@ void Renderer::InitializeWindowDependentResources()
         .dpiY = DEFAULT_DPI,
         .bitmapOptions =
             D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW};
-    IDXGISurface2 *dxgi_backbuffer;
+    ComPtr<IDXGISurface2> dxgi_backbuffer;
     WIN_CHECK(
         this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&dxgi_backbuffer)));
-    WIN_CHECK(this->_d2d_context->CreateBitmapFromDxgiSurface(
-        dxgi_backbuffer, &target_bitmap_properties, &this->_d2d_target_bitmap));
-    this->_d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
-
-    SafeRelease(&dxgi_backbuffer);
+    WIN_CHECK(_device->_d2d_context->CreateBitmapFromDxgiSurface(
+        dxgi_backbuffer.Get(), &target_bitmap_properties,
+        &this->_d2d_target_bitmap));
+    _device->_d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 }
 
 void Renderer::HandleDeviceLost()
 {
-    SafeRelease(&this->_d3d_device);
-    SafeRelease(&this->_d3d_context);
+    _device.reset();
     SafeRelease(&this->_dxgi_swapchain);
-    SafeRelease(&this->_d2d_factory);
-    SafeRelease(&this->_d2d_device);
-    SafeRelease(&this->_d2d_context);
     SafeRelease(&this->_d2d_target_bitmap);
-    SafeRelease(&this->_d2d_background_rect_brush);
 
     if (this->_glyph_renderer)
     {
@@ -552,8 +557,7 @@ void Renderer::HandleDeviceLost()
         this->_glyph_renderer = nullptr;
     }
 
-    this->InitializeD2D();
-    this->InitializeD3D();
+    _device = DeviceImpl::Create();
     auto hr = GlyphRenderer::Create(&this->_glyph_renderer);
     assert(hr == S_OK);
     this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
@@ -583,17 +587,9 @@ void Renderer::Attach()
 
 Renderer::~Renderer()
 {
-    SafeRelease(&this->_d3d_device);
-    SafeRelease(&this->_d3d_context);
     SafeRelease(&this->_dxgi_swapchain);
-    SafeRelease(&this->_d2d_factory);
-    SafeRelease(&this->_d2d_device);
-    SafeRelease(&this->_d2d_context);
     SafeRelease(&this->_d2d_target_bitmap);
-    SafeRelease(&this->_d2d_background_rect_brush);
-    _dwrite.reset();
     delete this->_glyph_renderer;
-
     free(this->_grid_chars);
     free(this->_grid_cell_properties);
 }
@@ -752,9 +748,9 @@ void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
                                   HighlightAttributes *hl_attribs)
 {
     uint32_t color = this->CreateBackgroundColor(hl_attribs);
-    this->_d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
-
-    this->_d2d_context->FillRectangle(rect, this->_d2d_background_rect_brush);
+    _device->_d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
+    _device->_d2d_context->FillRectangle(
+        rect, _device->_d2d_background_rect_brush.Get());
 }
 
 D2D1_RECT_F Renderer::GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect)
@@ -793,10 +789,11 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
     auto text_layout = _dwrite->GetTextLayout(rect, text, length);
     this->ApplyHighlightAttributes(hl_attribs, text_layout.Get(), 0, 1);
 
-    this->_d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
+    _device->_d2d_context->PushAxisAlignedClip(rect,
+                                               D2D1_ANTIALIAS_MODE_ALIASED);
     text_layout->Draw(this, this->_glyph_renderer, rect.left, rect.top);
     text_layout->Release();
-    this->_d2d_context->PopAxisAlignedClip();
+    _device->_d2d_context->PopAxisAlignedClip();
 }
 
 void Renderer::DrawGridLine(int row)
@@ -873,11 +870,12 @@ void Renderer::DrawGridLine(int row)
                                    text_layout.Get(), col_offset,
                                    this->_grid_cols);
 
-    this->_d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
+    _device->_d2d_context->PushAxisAlignedClip(rect,
+                                               D2D1_ANTIALIAS_MODE_ALIASED);
     _dwrite->SetTypographyIfNotLigatures(
         text_layout, static_cast<uint32_t>(this->_grid_cols));
     text_layout->Draw(this, this->_glyph_renderer, 0.0f, rect.top);
-    this->_d2d_context->PopAxisAlignedClip();
+    _device->_d2d_context->PopAxisAlignedClip();
 }
 
 void Renderer::DrawGridLines(mpack_node_t grid_lines)
@@ -1260,9 +1258,9 @@ void Renderer::StartDraw()
     {
         WaitForSingleObjectEx(this->_swapchain_wait_handle, 1000, true);
 
-        this->_d2d_context->SetTarget(this->_d2d_target_bitmap);
-        this->_d2d_context->BeginDraw();
-        this->_d2d_context->SetTransform(D2D1::IdentityMatrix());
+        _device->_d2d_context->SetTarget(this->_d2d_target_bitmap);
+        _device->_d2d_context->BeginDraw();
+        _device->_d2d_context->SetTransform(D2D1::IdentityMatrix());
         this->_draw_active = true;
     }
 }
@@ -1273,7 +1271,7 @@ void Renderer::CopyFrontToBack()
     ID3D11Resource *back;
     WIN_CHECK(this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&back)));
     WIN_CHECK(this->_dxgi_swapchain->GetBuffer(1, IID_PPV_ARGS(&front)));
-    this->_d3d_context->CopyResource(back, front);
+    _device->_d3d_context->CopyResource(back, front);
 
     SafeRelease(&front);
     SafeRelease(&back);
@@ -1281,7 +1279,7 @@ void Renderer::CopyFrontToBack()
 
 void Renderer::FinishDraw()
 {
-    this->_d2d_context->EndDraw();
+    _device->_d2d_context->EndDraw();
 
     HRESULT hr = this->_dxgi_swapchain->Present(0, 0);
     this->_draw_active = false;
@@ -1290,10 +1288,10 @@ void Renderer::FinishDraw()
 
     // clear render target
     ID3D11RenderTargetView *null_views[] = {nullptr};
-    this->_d3d_context->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
-                                           nullptr);
-    this->_d2d_context->SetTarget(nullptr);
-    this->_d3d_context->Flush();
+    _device->_d3d_context->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
+                                              nullptr);
+    _device->_d2d_context->SetTarget(nullptr);
+    _device->_d3d_context->Flush();
 
     if (hr == DXGI_ERROR_DEVICE_REMOVED)
     {
@@ -1476,12 +1474,12 @@ HRESULT Renderer::DrawGlyphRun(
         client_drawing_effect->QueryInterface(
             __uuidof(GlyphDrawingEffect),
             reinterpret_cast<void **>(drawing_effect.ReleaseAndGetAddressOf()));
-        _drawing_effect_brush->SetColor(
+        _device->_drawing_effect_brush->SetColor(
             D2D1::ColorF(drawing_effect->_text_color));
     }
     else
     {
-        _drawing_effect_brush->SetColor(
+        _device->_drawing_effect_brush->SetColor(
             D2D1::ColorF(this->_hl_attribs[0].foreground));
     }
 
@@ -1500,9 +1498,9 @@ HRESULT Renderer::DrawGlyphRun(
 
     if (hr == DWRITE_E_NOCOLOR)
     {
-        this->_d2d_context->DrawGlyphRun(
+        _device->_d2d_context->DrawGlyphRun(
             D2D1_POINT_2F{.x = baseline_origin_x, .y = baseline_origin_y},
-            glyph_run, _drawing_effect_brush, measuring_mode);
+            glyph_run, _device->_drawing_effect_brush.Get(), measuring_mode);
     }
     else
     {
@@ -1531,16 +1529,17 @@ HRESULT Renderer::DrawGlyphRun(
             case DWRITE_GLYPH_IMAGE_FORMATS_TIFF:
             case DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8:
             {
-                this->_d2d_context->DrawColorBitmapGlyphRun(
+                _device->_d2d_context->DrawColorBitmapGlyphRun(
                     color_run->glyphImageFormat, current_baseline_origin,
                     &color_run->glyphRun, measuring_mode);
             }
             break;
             case DWRITE_GLYPH_IMAGE_FORMATS_SVG:
             {
-                this->_d2d_context->DrawSvgGlyphRun(
+                _device->_d2d_context->DrawSvgGlyphRun(
                     current_baseline_origin, &color_run->glyphRun,
-                    _drawing_effect_brush, nullptr, 0, measuring_mode);
+                    _device->_drawing_effect_brush.Get(), nullptr, 0,
+                    measuring_mode);
             }
             break;
             case DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE:
@@ -1551,10 +1550,10 @@ HRESULT Renderer::DrawGlyphRun(
                 bool use_palette_color = color_run->paletteIndex != 0xFFFF;
                 if (use_palette_color)
                 {
-                    _temp_brush->SetColor(color_run->runColor);
+                    _device->_temp_brush->SetColor(color_run->runColor);
                 }
 
-                this->_d2d_context->PushAxisAlignedClip(
+                _device->_d2d_context->PushAxisAlignedClip(
                     D2D1_RECT_F{
                         .left = current_baseline_origin.x,
                         .top =
@@ -1566,12 +1565,13 @@ HRESULT Renderer::DrawGlyphRun(
                             current_baseline_origin.y + _dwrite->_font_descent,
                     },
                     D2D1_ANTIALIAS_MODE_ALIASED);
-                this->_d2d_context->DrawGlyphRun(
+                _device->_d2d_context->DrawGlyphRun(
                     current_baseline_origin, &color_run->glyphRun,
                     color_run->glyphRunDescription,
-                    use_palette_color ? _temp_brush : _drawing_effect_brush,
+                    use_palette_color ? _device->_temp_brush.Get()
+                                      : _device->_drawing_effect_brush.Get(),
                     measuring_mode);
-                this->_d2d_context->PopAxisAlignedClip();
+                _device->_d2d_context->PopAxisAlignedClip();
             }
             break;
             }
@@ -1593,11 +1593,11 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
         client_drawing_effect->QueryInterface(
             __uuidof(GlyphDrawingEffect),
             reinterpret_cast<void **>(drawing_effect.ReleaseAndGetAddressOf()));
-        _temp_brush->SetColor(D2D1::ColorF(drawing_effect->_special_color));
+        _device->_temp_brush->SetColor(D2D1::ColorF(drawing_effect->_special_color));
     }
     else
     {
-        _temp_brush->SetColor(D2D1::ColorF(this->_hl_attribs[0].special));
+        _device->_temp_brush->SetColor(D2D1::ColorF(this->_hl_attribs[0].special));
     }
 
     D2D1_RECT_F rect =
@@ -1607,13 +1607,13 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
                     .bottom = baseline_origin_y + underline->offset +
                               max(underline->thickness, 1.0f)};
 
-    this->_d2d_context->FillRectangle(rect, _temp_brush);
+    _device->_d2d_context->FillRectangle(rect, _device->_temp_brush.Get());
     return hr;
 }
 
 HRESULT Renderer::GetCurrentTransform(DWRITE_MATRIX *transform)
 {
-    this->_d2d_context->GetTransform(
+    _device->_d2d_context->GetTransform(
         reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
     return S_OK;
 }

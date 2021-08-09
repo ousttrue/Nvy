@@ -72,6 +72,8 @@ constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
 class Renderer
 {
+    std::unique_ptr<class DeviceImpl> _device;
+    std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
 
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
@@ -79,19 +81,10 @@ class Renderer
 
     struct GlyphRenderer *_glyph_renderer = nullptr;
 
-    D3D_FEATURE_LEVEL _d3d_feature_level;
-    ID3D11Device2 *_d3d_device = nullptr;
-    ID3D11DeviceContext2 *_d3d_context = nullptr;
     IDXGISwapChain2 *_dxgi_swapchain = nullptr;
     HANDLE _swapchain_wait_handle = nullptr;
-    ID2D1Factory5 *_d2d_factory = nullptr;
-    ID2D1Device4 *_d2d_device = nullptr;
     ID2D1Bitmap1 *_d2d_target_bitmap = nullptr;
-    ID2D1SolidColorBrush *_d2d_background_rect_brush = nullptr;
-    ID2D1SolidColorBrush *_drawing_effect_brush;
-    ID2D1SolidColorBrush *_temp_brush;
 
-    ID2D1DeviceContext4 *_d2d_context = nullptr;
     Vec<HighlightAttributes> _hl_attribs;
 
     D2D1_SIZE_U _pixel_size = {0};
@@ -131,8 +124,6 @@ public:
     HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
 private:
-    void InitializeD2D();
-    void InitializeD3D();
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
     void CopyFrontToBack();

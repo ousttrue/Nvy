@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include <tuple>
 using namespace Microsoft::WRL;
 
 struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect
@@ -416,6 +417,8 @@ public:
     ComPtr<ID2D1SolidColorBrush> _drawing_effect_brush;
     ComPtr<ID2D1SolidColorBrush> _temp_brush;
 
+    ComPtr<GlyphRenderer> _glyph_renderer;
+
 public:
     static std::unique_ptr<DeviceImpl> Create()
     {
@@ -466,37 +469,29 @@ public:
         WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
             D2D1::ColorF(D2D1::ColorF::Black), &p->_temp_brush));
 
+        auto hr = GlyphRenderer::Create(&p->_glyph_renderer);
+        if (FAILED(hr))
+        {
+            assert(false);
+        }
+
         return p;
     }
 };
 
 class SwapchainImpl
 {
+    ComPtr<IDXGISwapChain2> _dxgi_swapchain;
+    HANDLE _swapchain_wait_handle = nullptr;
+    DXGI_SWAP_CHAIN_DESC _desc;
 
-};
-
-void Renderer::InitializeWindowDependentResources()
-{
-    if (this->_dxgi_swapchain)
-    {
-        this->_d2d_target_bitmap->Release();
-
-        HRESULT hr = this->_dxgi_swapchain->ResizeBuffers(
-            2, this->_pixel_size.width, this->_pixel_size.height,
-            DXGI_FORMAT_B8G8R8A8_UNORM,
-            DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT |
-                DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
-
-        if (hr == DXGI_ERROR_DEVICE_REMOVED)
-        {
-            this->HandleDeviceLost();
-        }
-    }
-    else
+public:
+    static std::unique_ptr<SwapchainImpl>
+    Create(const ComPtr<ID3D11Device2> &d3d_device, HWND hwnd)
     {
         DXGI_SWAP_CHAIN_DESC1 swapchain_desc{
-            .Width = this->_pixel_size.width,
-            .Height = this->_pixel_size.height,
+            .Width = 0,
+            .Height = 0,
             .Format = DXGI_FORMAT_B8G8R8A8_UNORM,
             .SampleDesc = {.Count = 1, .Quality = 0},
             .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
@@ -508,7 +503,7 @@ void Renderer::InitializeWindowDependentResources()
                      DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING};
 
         ComPtr<IDXGIDevice3> dxgi_device;
-        WIN_CHECK(_device->_d3d_device.As(&dxgi_device));
+        WIN_CHECK(d3d_device.As(&dxgi_device));
         ComPtr<IDXGIAdapter> dxgi_adapter;
         WIN_CHECK(dxgi_device->GetAdapter(&dxgi_adapter));
         ComPtr<IDXGIFactory2> dxgi_factory;
@@ -516,18 +511,99 @@ void Renderer::InitializeWindowDependentResources()
 
         ComPtr<IDXGISwapChain1> dxgi_swapchain_temp;
         WIN_CHECK(dxgi_factory->CreateSwapChainForHwnd(
-            _device->_d3d_device.Get(), this->_hwnd, &swapchain_desc, nullptr,
-            nullptr, &dxgi_swapchain_temp));
-        WIN_CHECK(dxgi_factory->MakeWindowAssociation(this->_hwnd,
-                                                      DXGI_MWA_NO_ALT_ENTER));
-        WIN_CHECK(dxgi_swapchain_temp->QueryInterface(
-            __uuidof(IDXGISwapChain2),
-            reinterpret_cast<void **>(&this->_dxgi_swapchain)));
+            d3d_device.Get(), hwnd, &swapchain_desc, nullptr, nullptr,
+            &dxgi_swapchain_temp));
+        WIN_CHECK(
+            dxgi_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER));
+        ComPtr<IDXGISwapChain2> dxgi_swapchain;
+        WIN_CHECK(dxgi_swapchain_temp.As(&dxgi_swapchain));
+        WIN_CHECK(dxgi_swapchain->SetMaximumFrameLatency(1));
 
-        WIN_CHECK(this->_dxgi_swapchain->SetMaximumFrameLatency(1));
-        this->_swapchain_wait_handle =
-            this->_dxgi_swapchain->GetFrameLatencyWaitableObject();
+        auto p = std::unique_ptr<SwapchainImpl>(new SwapchainImpl);
+        p->_dxgi_swapchain = dxgi_swapchain;
+        p->_swapchain_wait_handle =
+            p->_dxgi_swapchain->GetFrameLatencyWaitableObject();
+        p->_dxgi_swapchain->GetDesc(&p->_desc);
+
+        return p;
     }
+
+    void Wait()
+    {
+        WaitForSingleObjectEx(_swapchain_wait_handle, 1000, true);
+    }
+
+    std::tuple<uint32_t, uint32_t> GetSize() const
+    {
+        return std::make_pair(_desc.BufferDesc.Width, _desc.BufferDesc.Height);
+    }
+
+    HRESULT Resize(uint32_t w, uint32_t h)
+    {
+        DXGI_SWAP_CHAIN_DESC desc;
+        _dxgi_swapchain->GetDesc(&desc);
+        if (desc.BufferDesc.Width == w && desc.BufferDesc.Height == h)
+        {
+            return S_OK;
+        }
+
+        HRESULT hr = this->_dxgi_swapchain->ResizeBuffers(
+            2, w, h, DXGI_FORMAT_B8G8R8A8_UNORM,
+            DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT |
+                DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+        return hr;
+    }
+
+    ComPtr<IDXGISurface2> GetBackbuffer()
+    {
+        ComPtr<IDXGISurface2> dxgi_backbuffer;
+        WIN_CHECK(this->_dxgi_swapchain->GetBuffer(
+            0, IID_PPV_ARGS(&dxgi_backbuffer)));
+        return dxgi_backbuffer;
+    }
+
+    HRESULT
+    PresentCopyFrontToBack(const ComPtr<ID3D11DeviceContext2> &d3d_context)
+    {
+        HRESULT hr = this->_dxgi_swapchain->Present(0, 0);
+        if (FAILED(hr))
+        {
+            return hr;
+        }
+
+        ComPtr<ID3D11Resource> back;
+        WIN_CHECK(this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&back)));
+        ComPtr<ID3D11Resource> front;
+        WIN_CHECK(this->_dxgi_swapchain->GetBuffer(1, IID_PPV_ARGS(&front)));
+        d3d_context->CopyResource(back.Get(), front.Get());
+        return S_OK;
+    }
+};
+
+void Renderer::InitializeWindowDependentResources()
+{
+    if (this->_swapchain)
+    {
+        uint32_t w, h;
+        std::tie(w, h) = this->_swapchain->GetSize();
+        if (_pixel_size.width == w &&_pixel_size.height == h)
+        {
+            // not resized. use same bitmap
+            return;
+        }
+        HRESULT hr =
+            this->_swapchain->Resize(_pixel_size.width, _pixel_size.height);
+        if (hr == DXGI_ERROR_DEVICE_REMOVED)
+        {
+            this->HandleDeviceLost();
+        }
+    }
+    else
+    {
+        this->_swapchain = SwapchainImpl::Create(_device->_d3d_device, _hwnd);
+    }
+
+    auto dxgi_backbuffer = _swapchain->GetBackbuffer();
 
     constexpr D2D1_BITMAP_PROPERTIES1 target_bitmap_properties{
         .pixelFormat = D2D1_PIXEL_FORMAT{.format = DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -536,9 +612,6 @@ void Renderer::InitializeWindowDependentResources()
         .dpiY = DEFAULT_DPI,
         .bitmapOptions =
             D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW};
-    ComPtr<IDXGISurface2> dxgi_backbuffer;
-    WIN_CHECK(
-        this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&dxgi_backbuffer)));
     WIN_CHECK(_device->_d2d_context->CreateBitmapFromDxgiSurface(
         dxgi_backbuffer.Get(), &target_bitmap_properties,
         &this->_d2d_target_bitmap));
@@ -548,18 +621,10 @@ void Renderer::InitializeWindowDependentResources()
 void Renderer::HandleDeviceLost()
 {
     _device.reset();
-    SafeRelease(&this->_dxgi_swapchain);
-    SafeRelease(&this->_d2d_target_bitmap);
-
-    if (this->_glyph_renderer)
-    {
-        delete this->_glyph_renderer;
-        this->_glyph_renderer = nullptr;
-    }
+    _swapchain.reset();
+    _d2d_target_bitmap.Reset();
 
     _device = DeviceImpl::Create();
-    auto hr = GlyphRenderer::Create(&this->_glyph_renderer);
-    assert(hr == S_OK);
     this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
                      static_cast<int>(strlen(DEFAULT_FONT)));
 }
@@ -575,6 +640,12 @@ Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
     this->HandleDeviceLost();
 }
 
+Renderer::~Renderer()
+{
+    free(this->_grid_chars);
+    free(this->_grid_cell_properties);
+}
+
 void Renderer::Attach()
 {
     RECT client_rect;
@@ -583,15 +654,6 @@ void Renderer::Attach()
         static_cast<uint32_t>(client_rect.right - client_rect.left);
     _pixel_size.height =
         static_cast<uint32_t>(client_rect.bottom - client_rect.top);
-}
-
-Renderer::~Renderer()
-{
-    SafeRelease(&this->_dxgi_swapchain);
-    SafeRelease(&this->_d2d_target_bitmap);
-    delete this->_glyph_renderer;
-    free(this->_grid_chars);
-    free(this->_grid_cell_properties);
 }
 
 void Renderer::Resize(uint32_t width, uint32_t height)
@@ -791,7 +853,8 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
 
     _device->_d2d_context->PushAxisAlignedClip(rect,
                                                D2D1_ANTIALIAS_MODE_ALIASED);
-    text_layout->Draw(this, this->_glyph_renderer, rect.left, rect.top);
+    text_layout->Draw(this, _device->_glyph_renderer.Get(), rect.left,
+                      rect.top);
     text_layout->Release();
     _device->_d2d_context->PopAxisAlignedClip();
 }
@@ -874,7 +937,7 @@ void Renderer::DrawGridLine(int row)
                                                D2D1_ANTIALIAS_MODE_ALIASED);
     _dwrite->SetTypographyIfNotLigatures(
         text_layout, static_cast<uint32_t>(this->_grid_cols));
-    text_layout->Draw(this, this->_glyph_renderer, 0.0f, rect.top);
+    text_layout->Draw(this, _device->_glyph_renderer.Get(), 0.0f, rect.top);
     _device->_d2d_context->PopAxisAlignedClip();
 }
 
@@ -1256,35 +1319,22 @@ void Renderer::StartDraw()
 {
     if (!this->_draw_active)
     {
-        WaitForSingleObjectEx(this->_swapchain_wait_handle, 1000, true);
+        _swapchain->Wait();
 
-        _device->_d2d_context->SetTarget(this->_d2d_target_bitmap);
+        _device->_d2d_context->SetTarget(this->_d2d_target_bitmap.Get());
         _device->_d2d_context->BeginDraw();
         _device->_d2d_context->SetTransform(D2D1::IdentityMatrix());
         this->_draw_active = true;
     }
 }
 
-void Renderer::CopyFrontToBack()
-{
-    ID3D11Resource *front;
-    ID3D11Resource *back;
-    WIN_CHECK(this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&back)));
-    WIN_CHECK(this->_dxgi_swapchain->GetBuffer(1, IID_PPV_ARGS(&front)));
-    _device->_d3d_context->CopyResource(back, front);
-
-    SafeRelease(&front);
-    SafeRelease(&back);
-}
-
 void Renderer::FinishDraw()
 {
     _device->_d2d_context->EndDraw();
 
-    HRESULT hr = this->_dxgi_swapchain->Present(0, 0);
-    this->_draw_active = false;
+    auto hr = _swapchain->PresentCopyFrontToBack(_device->_d3d_context);
 
-    this->CopyFrontToBack();
+    this->_draw_active = false;
 
     // clear render target
     ID3D11RenderTargetView *null_views[] = {nullptr};
@@ -1301,32 +1351,7 @@ void Renderer::FinishDraw()
 
 void Renderer::Redraw(mpack_node_t params)
 {
-    if (!_dxgi_swapchain)
-    {
-        //
-        // create swapchain resource
-        //
-        RECT client_rect;
-        GetClientRect(_hwnd, &client_rect);
-        _pixel_size.width =
-            static_cast<uint32_t>(client_rect.right - client_rect.left);
-        _pixel_size.height =
-            static_cast<uint32_t>(client_rect.bottom - client_rect.top);
-        this->InitializeWindowDependentResources();
-    }
-    else
-    {
-        DXGI_SWAP_CHAIN_DESC desc;
-        _dxgi_swapchain->GetDesc(&desc);
-        if (desc.BufferDesc.Width != _pixel_size.width ||
-            desc.BufferDesc.Height != _pixel_size.height)
-        {
-            //
-            // resize swapchain
-            //
-            this->InitializeWindowDependentResources();
-        }
-    }
+    this->InitializeWindowDependentResources();
 
     this->StartDraw();
 
@@ -1593,11 +1618,13 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
         client_drawing_effect->QueryInterface(
             __uuidof(GlyphDrawingEffect),
             reinterpret_cast<void **>(drawing_effect.ReleaseAndGetAddressOf()));
-        _device->_temp_brush->SetColor(D2D1::ColorF(drawing_effect->_special_color));
+        _device->_temp_brush->SetColor(
+            D2D1::ColorF(drawing_effect->_special_color));
     }
     else
     {
-        _device->_temp_brush->SetColor(D2D1::ColorF(this->_hl_attribs[0].special));
+        _device->_temp_brush->SetColor(
+            D2D1::ColorF(this->_hl_attribs[0].special));
     }
 
     D2D1_RECT_F rect =

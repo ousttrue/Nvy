@@ -75,15 +75,10 @@ class Renderer
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Cursor _cursor = {0};
-
-    struct GlyphRenderer *_glyph_renderer = nullptr;
-
-    IDXGISwapChain2 *_dxgi_swapchain = nullptr;
-    HANDLE _swapchain_wait_handle = nullptr;
-    ID2D1Bitmap1 *_d2d_target_bitmap = nullptr;
 
     Vec<HighlightAttributes> _hl_attribs;
 
@@ -126,7 +121,6 @@ public:
 private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
-    void CopyFrontToBack();
     void UpdateDefaultColors(mpack_node_t default_colors);
     void UpdateHighlightAttributes(mpack_node_t highlight_attribs);
     uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);

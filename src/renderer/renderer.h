@@ -71,51 +71,51 @@ constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
 class Renderer
 {
-    CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
-    Cursor cursor = {0};
+    CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
+    Cursor _cursor = {0};
 
-    struct GlyphRenderer *glyph_renderer = nullptr;
+    struct GlyphRenderer *_glyph_renderer = nullptr;
 
-    D3D_FEATURE_LEVEL d3d_feature_level;
-    ID3D11Device2 *d3d_device = nullptr;
-    ID3D11DeviceContext2 *d3d_context = nullptr;
-    IDXGISwapChain2 *dxgi_swapchain = nullptr;
-    HANDLE swapchain_wait_handle = nullptr;
-    ID2D1Factory5 *d2d_factory = nullptr;
-    ID2D1Device4 *d2d_device = nullptr;
-    ID2D1Bitmap1 *d2d_target_bitmap = nullptr;
-    ID2D1SolidColorBrush *d2d_background_rect_brush = nullptr;
-    ID2D1SolidColorBrush *drawing_effect_brush;
-    ID2D1SolidColorBrush *temp_brush;
+    D3D_FEATURE_LEVEL _d3d_feature_level;
+    ID3D11Device2 *_d3d_device = nullptr;
+    ID3D11DeviceContext2 *_d3d_context = nullptr;
+    IDXGISwapChain2 *_dxgi_swapchain = nullptr;
+    HANDLE _swapchain_wait_handle = nullptr;
+    ID2D1Factory5 *_d2d_factory = nullptr;
+    ID2D1Device4 *_d2d_device = nullptr;
+    ID2D1Bitmap1 *_d2d_target_bitmap = nullptr;
+    ID2D1SolidColorBrush *_d2d_background_rect_brush = nullptr;
+    ID2D1SolidColorBrush *_drawing_effect_brush;
+    ID2D1SolidColorBrush *_temp_brush;
 
-    bool disable_ligatures = false;
-    IDWriteTypography *dwrite_typography = nullptr;
+    bool _disable_ligatures = false;
+    IDWriteTypography *_dwrite_typography = nullptr;
 
-    ID2D1DeviceContext4 *d2d_context = nullptr;
-    Vec<HighlightAttributes> hl_attribs;
-    float last_requested_font_size = 0;
-    IDWriteFactory4 *dwrite_factory = nullptr;
-    IDWriteTextFormat *dwrite_text_format = nullptr;
-    IDWriteFontFace1 *font_face = nullptr;
-    float linespace_factor = 0;
-    wchar_t font[MAX_FONT_LENGTH] = {0};
-    DWRITE_FONT_METRICS1 font_metrics = {};
-    float dpi_scale = 0;
-    float font_size = 0;
-    float font_height = 0;
-    float font_width = 0;
-    float font_ascent = 0;
-    float font_descent = 0;
+    ID2D1DeviceContext4 *_d2d_context = nullptr;
+    Vec<HighlightAttributes> _hl_attribs;
+    float _last_requested_font_size = 0;
+    IDWriteFactory4 *_dwrite_factory = nullptr;
+    IDWriteTextFormat *_dwrite_text_format = nullptr;
+    IDWriteFontFace1 *_font_face = nullptr;
+    float _linespace_factor = 0;
+    wchar_t _font[MAX_FONT_LENGTH] = {0};
+    DWRITE_FONT_METRICS1 _font_metrics = {};
+    float _dpi_scale = 0;
+    float _font_size = 0;
+    float _font_height = 0;
+    float _font_width = 0;
+    float _font_ascent = 0;
+    float _font_descent = 0;
 
-    D2D1_SIZE_U pixel_size = {0};
-    int grid_rows = 0;
-    int grid_cols = 0;
-    wchar_t *grid_chars = nullptr;
-    CellProperty *grid_cell_properties = nullptr;
+    D2D1_SIZE_U _pixel_size = {0};
+    int _grid_rows = 0;
+    int _grid_cols = 0;
+    wchar_t *_grid_chars = nullptr;
+    CellProperty *_grid_cell_properties = nullptr;
 
-    HWND hwnd = nullptr;
-    bool draw_active = false;
-    bool ui_busy = false;
+    HWND _hwnd = nullptr;
+    bool _draw_active = false;
+    bool _ui_busy = false;
 
 public:
     Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,

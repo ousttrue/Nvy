@@ -1,13 +1,20 @@
 #include "renderer.h"
+using namespace Microsoft::WRL;
 
 struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect
     : public IUnknown
 {
+    ULONG ref_count;
+    uint32_t text_color;
+    uint32_t special_color;
+
+private:
     GlyphDrawingEffect(uint32_t text_color, uint32_t special_color)
-        : ref_count(0), text_color(text_color), special_color(special_color)
+        : ref_count(1), text_color(text_color), special_color(special_color)
     {
     }
 
+public:
     inline ULONG AddRef() noexcept override
     {
         return InterlockedIncrement(&ref_count);
@@ -44,29 +51,30 @@ struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect
         return S_OK;
     }
 
-    ULONG ref_count;
-    uint32_t text_color;
-    uint32_t special_color;
+    static HRESULT Create(uint32_t text_color, uint32_t special_color,
+                          GlyphDrawingEffect **pp)
+    {
+        auto p = new GlyphDrawingEffect(text_color, special_color);
+        *pp = p;
+        return S_OK;
+    }
 };
 
 struct GlyphRenderer : public IDWriteTextRenderer
 {
     ULONG ref_count;
-    ID2D1SolidColorBrush *drawing_effect_brush;
-    ID2D1SolidColorBrush *temp_brush;
 
-    GlyphRenderer(Renderer *renderer) : ref_count(0)
+private:
+    GlyphRenderer() : ref_count(1)
     {
-        WIN_CHECK(renderer->d2d_context->CreateSolidColorBrush(
-            D2D1::ColorF(D2D1::ColorF::Black), &drawing_effect_brush));
-        WIN_CHECK(renderer->d2d_context->CreateSolidColorBrush(
-            D2D1::ColorF(D2D1::ColorF::Black), &temp_brush));
     }
 
-    ~GlyphRenderer()
+public:
+    static HRESULT Create(GlyphRenderer **pp)
     {
-        SafeRelease(&drawing_effect_brush);
-        SafeRelease(&temp_brush);
+        auto p = new GlyphRenderer();
+        *pp = p;
+        return S_OK;
     }
 
     HRESULT
@@ -76,120 +84,10 @@ struct GlyphRenderer : public IDWriteTextRenderer
                  DWRITE_GLYPH_RUN_DESCRIPTION const *glyph_run_description,
                  IUnknown *client_drawing_effect) noexcept override
     {
-        HRESULT hr = S_OK;
-        Renderer *renderer =
-            reinterpret_cast<Renderer *>(client_drawing_context);
-
-        if (client_drawing_effect)
-        {
-            GlyphDrawingEffect *drawing_effect;
-            client_drawing_effect->QueryInterface(
-                __uuidof(GlyphDrawingEffect),
-                reinterpret_cast<void **>(&drawing_effect));
-            drawing_effect_brush->SetColor(
-                D2D1::ColorF(drawing_effect->text_color));
-            SafeRelease(&drawing_effect);
-        }
-        else
-        {
-            drawing_effect_brush->SetColor(
-                D2D1::ColorF(renderer->hl_attribs[0].foreground));
-        }
-
-        DWRITE_GLYPH_IMAGE_FORMATS supported_formats =
-            DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE |
-            DWRITE_GLYPH_IMAGE_FORMATS_CFF | DWRITE_GLYPH_IMAGE_FORMATS_COLR |
-            DWRITE_GLYPH_IMAGE_FORMATS_SVG | DWRITE_GLYPH_IMAGE_FORMATS_PNG |
-            DWRITE_GLYPH_IMAGE_FORMATS_JPEG | DWRITE_GLYPH_IMAGE_FORMATS_TIFF |
-            DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8;
-
-        IDWriteColorGlyphRunEnumerator1 *glyph_run_enumerator;
-        hr = renderer->dwrite_factory->TranslateColorGlyphRun(
-            D2D1_POINT_2F{.x = baseline_origin_x, .y = baseline_origin_y},
-            glyph_run, glyph_run_description, supported_formats, measuring_mode,
-            nullptr, 0, &glyph_run_enumerator);
-
-        if (hr == DWRITE_E_NOCOLOR)
-        {
-            renderer->d2d_context->DrawGlyphRun(
-                D2D1_POINT_2F{.x = baseline_origin_x, .y = baseline_origin_y},
-                glyph_run, drawing_effect_brush, measuring_mode);
-        }
-        else
-        {
-            assert(!FAILED(hr));
-
-            while (true)
-            {
-                BOOL has_run;
-                WIN_CHECK(glyph_run_enumerator->MoveNext(&has_run));
-                if (!has_run)
-                {
-                    break;
-                }
-
-                DWRITE_COLOR_GLYPH_RUN1 const *color_run;
-                WIN_CHECK(glyph_run_enumerator->GetCurrentRun(&color_run));
-
-                D2D1_POINT_2F current_baseline_origin{
-                    .x = color_run->baselineOriginX,
-                    .y = color_run->baselineOriginY};
-
-                switch (color_run->glyphImageFormat)
-                {
-                case DWRITE_GLYPH_IMAGE_FORMATS_PNG:
-                case DWRITE_GLYPH_IMAGE_FORMATS_JPEG:
-                case DWRITE_GLYPH_IMAGE_FORMATS_TIFF:
-                case DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8:
-                {
-                    renderer->d2d_context->DrawColorBitmapGlyphRun(
-                        color_run->glyphImageFormat, current_baseline_origin,
-                        &color_run->glyphRun, measuring_mode);
-                }
-                break;
-                case DWRITE_GLYPH_IMAGE_FORMATS_SVG:
-                {
-                    renderer->d2d_context->DrawSvgGlyphRun(
-                        current_baseline_origin, &color_run->glyphRun,
-                        drawing_effect_brush, nullptr, 0, measuring_mode);
-                }
-                break;
-                case DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE:
-                case DWRITE_GLYPH_IMAGE_FORMATS_CFF:
-                case DWRITE_GLYPH_IMAGE_FORMATS_COLR:
-                default:
-                {
-                    bool use_palette_color = color_run->paletteIndex != 0xFFFF;
-                    if (use_palette_color)
-                    {
-                        temp_brush->SetColor(color_run->runColor);
-                    }
-
-                    renderer->d2d_context->PushAxisAlignedClip(
-                        D2D1_RECT_F{
-                            .left = current_baseline_origin.x,
-                            .top = current_baseline_origin.y -
-                                   renderer->font_ascent,
-                            .right = current_baseline_origin.x +
-                                     (color_run->glyphRun.glyphCount * 2 *
-                                      renderer->font_width),
-                            .bottom = current_baseline_origin.y +
-                                      renderer->font_descent,
-                        },
-                        D2D1_ANTIALIAS_MODE_ALIASED);
-                    renderer->d2d_context->DrawGlyphRun(
-                        current_baseline_origin, &color_run->glyphRun,
-                        color_run->glyphRunDescription,
-                        use_palette_color ? temp_brush : drawing_effect_brush,
-                        measuring_mode);
-                    renderer->d2d_context->PopAxisAlignedClip();
-                }
-                break;
-                }
-            }
-        }
-
-        return hr;
+        auto renderer = reinterpret_cast<Renderer *>(client_drawing_context);
+        return renderer->DrawGlyphRun(
+            baseline_origin_x, baseline_origin_y, measuring_mode, glyph_run,
+            glyph_run_description, client_drawing_effect);
     }
 
     HRESULT DrawInlineObject(void *client_drawing_context, float origin_x,
@@ -214,33 +112,9 @@ struct GlyphRenderer : public IDWriteTextRenderer
                           DWRITE_UNDERLINE const *underline,
                           IUnknown *client_drawing_effect) noexcept override
     {
-        HRESULT hr = S_OK;
-        Renderer *renderer =
-            reinterpret_cast<Renderer *>(client_drawing_context);
-
-        if (client_drawing_effect)
-        {
-            GlyphDrawingEffect *drawing_effect;
-            client_drawing_effect->QueryInterface(
-                __uuidof(GlyphDrawingEffect),
-                reinterpret_cast<void **>(&drawing_effect));
-            temp_brush->SetColor(D2D1::ColorF(drawing_effect->special_color));
-            SafeRelease(&drawing_effect);
-        }
-        else
-        {
-            temp_brush->SetColor(D2D1::ColorF(renderer->hl_attribs[0].special));
-        }
-
-        D2D1_RECT_F rect =
-            D2D1_RECT_F{.left = baseline_origin_x,
-                        .top = baseline_origin_y + underline->offset,
-                        .right = baseline_origin_x + underline->width,
-                        .bottom = baseline_origin_y + underline->offset +
-                                  max(underline->thickness, 1.0f)};
-
-        renderer->d2d_context->FillRectangle(rect, temp_brush);
-        return hr;
+        auto renderer = reinterpret_cast<Renderer *>(client_drawing_context);
+        return renderer->DrawUnderline(baseline_origin_x, baseline_origin_y,
+                                       underline, client_drawing_effect);
     }
 
     HRESULT IsPixelSnappingDisabled(void *client_drawing_context,
@@ -255,9 +129,7 @@ struct GlyphRenderer : public IDWriteTextRenderer
     {
         Renderer *renderer =
             reinterpret_cast<Renderer *>(client_drawing_context);
-        renderer->d2d_context->GetTransform(
-            reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
-        return S_OK;
+        return renderer->GetCurrentTransform(transform);
     }
 
     HRESULT GetPixelsPerDip(void *client_drawing_context,
@@ -352,6 +224,11 @@ void Renderer::InitializeD3D()
         &this->d2d_context));
     WIN_CHECK(this->d2d_context->CreateSolidColorBrush(
         D2D1::ColorF(D2D1::ColorF::Black), &this->d2d_background_rect_brush));
+
+    WIN_CHECK(d2d_context->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::Black), &drawing_effect_brush));
+    WIN_CHECK(d2d_context->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::Black), &temp_brush));
 
     SafeRelease(&dxgi_device);
 }
@@ -469,7 +346,8 @@ void Renderer::HandleDeviceLost()
     this->InitializeD2D();
     this->InitializeD3D();
     this->InitializeDWrite();
-    this->glyph_renderer = new GlyphRenderer(this);
+    auto hr = GlyphRenderer::Create(&this->glyph_renderer);
+    assert(hr == S_OK);
     this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
                      static_cast<int>(strlen(DEFAULT_FONT)));
 }
@@ -536,33 +414,32 @@ float Renderer::GetTextWidth(wchar_t *text, uint32_t length)
     return metrics.width;
 }
 
-void UpdateFontMetrics(Renderer *renderer, float font_size,
-                       const char *font_string, int strlen)
+void Renderer::UpdateFontMetrics(float font_size, const char *font_string,
+                                 int strlen)
 {
     font_size = max(5.0f, min(font_size, 150.0f));
-    renderer->last_requested_font_size = font_size;
+    this->last_requested_font_size = font_size;
 
     IDWriteFontCollection *font_collection;
-    WIN_CHECK(
-        renderer->dwrite_factory->GetSystemFontCollection(&font_collection));
+    WIN_CHECK(this->dwrite_factory->GetSystemFontCollection(&font_collection));
 
     int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
     if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH)
     {
-        MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, renderer->font,
+        MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, this->font,
                             MAX_FONT_LENGTH - 1);
-        renderer->font[wstrlen] = L'\0';
+        this->font[wstrlen] = L'\0';
     }
 
     uint32_t index;
     BOOL exists;
-    font_collection->FindFamilyName(renderer->font, &index, &exists);
+    font_collection->FindFamilyName(this->font, &index, &exists);
 
     const wchar_t *fallback_font = L"Consolas";
     if (!exists)
     {
         font_collection->FindFamilyName(fallback_font, &index, &exists);
-        memcpy(renderer->font, fallback_font,
+        memcpy(this->font, fallback_font,
                (wcslen(fallback_font) + 1) * sizeof(wchar_t));
     }
 
@@ -576,56 +453,52 @@ void UpdateFontMetrics(Renderer *renderer, float font_size,
 
     IDWriteFontFace *font_face;
     WIN_CHECK(write_font->CreateFontFace(&font_face));
-    WIN_CHECK(
-        font_face->QueryInterface<IDWriteFontFace1>(&renderer->font_face));
+    WIN_CHECK(font_face->QueryInterface<IDWriteFontFace1>(&this->font_face));
 
-    renderer->font_face->GetMetrics(&renderer->font_metrics);
+    this->font_face->GetMetrics(&this->font_metrics);
 
     uint16_t glyph_index;
     constexpr uint32_t codepoint = L'A';
-    WIN_CHECK(
-        renderer->font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
+    WIN_CHECK(this->font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
 
     int32_t glyph_advance_in_em;
-    WIN_CHECK(renderer->font_face->GetDesignGlyphAdvances(
-        1, &glyph_index, &glyph_advance_in_em));
+    WIN_CHECK(this->font_face->GetDesignGlyphAdvances(1, &glyph_index,
+                                                      &glyph_advance_in_em));
 
     float desired_height =
-        font_size * renderer->dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
+        font_size * this->dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
     float width_advance = static_cast<float>(glyph_advance_in_em) /
-                          renderer->font_metrics.designUnitsPerEm;
+                          this->font_metrics.designUnitsPerEm;
     float desired_width = desired_height * width_advance;
 
     // We need the width to be aligned on a per-pixel boundary, thus we will
     // roundf the desired_width and calculate the font size given the new exact
     // width
-    renderer->font_width = roundf(desired_width);
-    renderer->font_size = renderer->font_width / width_advance;
-    float frac_font_ascent =
-        (renderer->font_size * renderer->font_metrics.ascent) /
-        renderer->font_metrics.designUnitsPerEm;
-    float frac_font_descent =
-        (renderer->font_size * renderer->font_metrics.descent) /
-        renderer->font_metrics.designUnitsPerEm;
-    float linegap = (renderer->font_size * renderer->font_metrics.lineGap) /
-                    renderer->font_metrics.designUnitsPerEm;
+    this->font_width = roundf(desired_width);
+    this->font_size = this->font_width / width_advance;
+    float frac_font_ascent = (this->font_size * this->font_metrics.ascent) /
+                             this->font_metrics.designUnitsPerEm;
+    float frac_font_descent = (this->font_size * this->font_metrics.descent) /
+                              this->font_metrics.designUnitsPerEm;
+    float linegap = (this->font_size * this->font_metrics.lineGap) /
+                    this->font_metrics.designUnitsPerEm;
     float half_linegap = linegap / 2.0f;
-    renderer->font_ascent = ceilf(frac_font_ascent + half_linegap);
-    renderer->font_descent = ceilf(frac_font_descent + half_linegap);
-    renderer->font_height = renderer->font_ascent + renderer->font_descent;
-    renderer->font_height *= renderer->linespace_factor;
+    this->font_ascent = ceilf(frac_font_ascent + half_linegap);
+    this->font_descent = ceilf(frac_font_descent + half_linegap);
+    this->font_height = this->font_ascent + this->font_descent;
+    this->font_height *= this->linespace_factor;
 
-    WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
-        renderer->font, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
-        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-        renderer->font_size, L"en-us", &renderer->dwrite_text_format));
+    WIN_CHECK(this->dwrite_factory->CreateTextFormat(
+        this->font, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, this->font_size,
+        L"en-us", &this->dwrite_text_format));
 
-    WIN_CHECK(renderer->dwrite_text_format->SetLineSpacing(
-        DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->font_height,
-        renderer->font_ascent * renderer->linespace_factor));
-    WIN_CHECK(renderer->dwrite_text_format->SetParagraphAlignment(
+    WIN_CHECK(this->dwrite_text_format->SetLineSpacing(
+        DWRITE_LINE_SPACING_METHOD_UNIFORM, this->font_height,
+        this->font_ascent * this->linespace_factor));
+    WIN_CHECK(this->dwrite_text_format->SetParagraphAlignment(
         DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
-    WIN_CHECK(renderer->dwrite_text_format->SetWordWrapping(
+    WIN_CHECK(this->dwrite_text_format->SetWordWrapping(
         DWRITE_WORD_WRAPPING_NO_WRAP));
 
     SafeRelease(&font_face);
@@ -641,7 +514,7 @@ void Renderer::UpdateFont(float font_size, const char *font_string, int strlen)
         this->dwrite_text_format->Release();
     }
 
-    UpdateFontMetrics(this, font_size, font_string, strlen);
+    this->UpdateFontMetrics(font_size, font_string, strlen);
 }
 
 void Renderer::UpdateDefaultColors(mpack_node_t default_colors)
@@ -759,9 +632,10 @@ void Renderer::ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
                                         IDWriteTextLayout *text_layout,
                                         int start, int end)
 {
-    GlyphDrawingEffect *drawing_effect =
-        new GlyphDrawingEffect(this->CreateForegroundColor(hl_attribs),
-                               this->CreateSpecialColor(hl_attribs));
+    ComPtr<GlyphDrawingEffect> drawing_effect;
+    GlyphDrawingEffect::Create(this->CreateForegroundColor(hl_attribs),
+                               this->CreateSpecialColor(hl_attribs),
+                               &drawing_effect);
     DWRITE_TEXT_RANGE range{.startPosition = static_cast<uint32_t>(start),
                             .length = static_cast<uint32_t>(end - start)};
     if (hl_attribs->flags & HL_ATTRIB_ITALIC)
@@ -784,7 +658,7 @@ void Renderer::ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
     {
         text_layout->SetUnderline(true, range);
     }
-    text_layout->SetDrawingEffect(drawing_effect, range);
+    text_layout->SetDrawingEffect(drawing_effect.Get(), range);
 }
 
 void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
@@ -1509,4 +1383,158 @@ bool Renderer::ResizeFont(float size, int *pRows, int *pCols)
     *pRows = rows;
     *pCols = cols;
     return rows != grid_rows || cols != grid_cols;
+}
+
+HRESULT Renderer::DrawGlyphRun(
+    float baseline_origin_x, float baseline_origin_y,
+    DWRITE_MEASURING_MODE measuring_mode, DWRITE_GLYPH_RUN const *glyph_run,
+    DWRITE_GLYPH_RUN_DESCRIPTION const *glyph_run_description,
+    IUnknown *client_drawing_effect)
+{
+    HRESULT hr = S_OK;
+    if (client_drawing_effect)
+    {
+        ComPtr<GlyphDrawingEffect> drawing_effect;
+        client_drawing_effect->QueryInterface(
+            __uuidof(GlyphDrawingEffect),
+            reinterpret_cast<void **>(drawing_effect.ReleaseAndGetAddressOf()));
+        drawing_effect_brush->SetColor(
+            D2D1::ColorF(drawing_effect->text_color));
+    }
+    else
+    {
+        drawing_effect_brush->SetColor(
+            D2D1::ColorF(this->hl_attribs[0].foreground));
+    }
+
+    DWRITE_GLYPH_IMAGE_FORMATS supported_formats =
+        DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE | DWRITE_GLYPH_IMAGE_FORMATS_CFF |
+        DWRITE_GLYPH_IMAGE_FORMATS_COLR | DWRITE_GLYPH_IMAGE_FORMATS_SVG |
+        DWRITE_GLYPH_IMAGE_FORMATS_PNG | DWRITE_GLYPH_IMAGE_FORMATS_JPEG |
+        DWRITE_GLYPH_IMAGE_FORMATS_TIFF |
+        DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8;
+
+    IDWriteColorGlyphRunEnumerator1 *glyph_run_enumerator;
+    hr = this->dwrite_factory->TranslateColorGlyphRun(
+        D2D1_POINT_2F{.x = baseline_origin_x, .y = baseline_origin_y},
+        glyph_run, glyph_run_description, supported_formats, measuring_mode,
+        nullptr, 0, &glyph_run_enumerator);
+
+    if (hr == DWRITE_E_NOCOLOR)
+    {
+        this->d2d_context->DrawGlyphRun(
+            D2D1_POINT_2F{.x = baseline_origin_x, .y = baseline_origin_y},
+            glyph_run, drawing_effect_brush, measuring_mode);
+    }
+    else
+    {
+        assert(!FAILED(hr));
+
+        while (true)
+        {
+            BOOL has_run;
+            WIN_CHECK(glyph_run_enumerator->MoveNext(&has_run));
+            if (!has_run)
+            {
+                break;
+            }
+
+            DWRITE_COLOR_GLYPH_RUN1 const *color_run;
+            WIN_CHECK(glyph_run_enumerator->GetCurrentRun(&color_run));
+
+            D2D1_POINT_2F current_baseline_origin{
+                .x = color_run->baselineOriginX,
+                .y = color_run->baselineOriginY};
+
+            switch (color_run->glyphImageFormat)
+            {
+            case DWRITE_GLYPH_IMAGE_FORMATS_PNG:
+            case DWRITE_GLYPH_IMAGE_FORMATS_JPEG:
+            case DWRITE_GLYPH_IMAGE_FORMATS_TIFF:
+            case DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8:
+            {
+                this->d2d_context->DrawColorBitmapGlyphRun(
+                    color_run->glyphImageFormat, current_baseline_origin,
+                    &color_run->glyphRun, measuring_mode);
+            }
+            break;
+            case DWRITE_GLYPH_IMAGE_FORMATS_SVG:
+            {
+                this->d2d_context->DrawSvgGlyphRun(
+                    current_baseline_origin, &color_run->glyphRun,
+                    drawing_effect_brush, nullptr, 0, measuring_mode);
+            }
+            break;
+            case DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE:
+            case DWRITE_GLYPH_IMAGE_FORMATS_CFF:
+            case DWRITE_GLYPH_IMAGE_FORMATS_COLR:
+            default:
+            {
+                bool use_palette_color = color_run->paletteIndex != 0xFFFF;
+                if (use_palette_color)
+                {
+                    temp_brush->SetColor(color_run->runColor);
+                }
+
+                this->d2d_context->PushAxisAlignedClip(
+                    D2D1_RECT_F{
+                        .left = current_baseline_origin.x,
+                        .top = current_baseline_origin.y - this->font_ascent,
+                        .right = current_baseline_origin.x +
+                                 (color_run->glyphRun.glyphCount * 2 *
+                                  this->font_width),
+                        .bottom =
+                            current_baseline_origin.y + this->font_descent,
+                    },
+                    D2D1_ANTIALIAS_MODE_ALIASED);
+                this->d2d_context->DrawGlyphRun(
+                    current_baseline_origin, &color_run->glyphRun,
+                    color_run->glyphRunDescription,
+                    use_palette_color ? temp_brush : drawing_effect_brush,
+                    measuring_mode);
+                this->d2d_context->PopAxisAlignedClip();
+            }
+            break;
+            }
+        }
+    }
+
+    return hr;
+}
+
+HRESULT Renderer::DrawUnderline(float baseline_origin_x,
+                                float baseline_origin_y,
+                                DWRITE_UNDERLINE const *underline,
+                                IUnknown *client_drawing_effect)
+{
+    HRESULT hr = S_OK;
+    if (client_drawing_effect)
+    {
+        ComPtr<GlyphDrawingEffect> drawing_effect;
+        client_drawing_effect->QueryInterface(
+            __uuidof(GlyphDrawingEffect),
+            reinterpret_cast<void **>(drawing_effect.ReleaseAndGetAddressOf()));
+        temp_brush->SetColor(D2D1::ColorF(drawing_effect->special_color));
+    }
+    else
+    {
+        temp_brush->SetColor(D2D1::ColorF(this->hl_attribs[0].special));
+    }
+
+    D2D1_RECT_F rect =
+        D2D1_RECT_F{.left = baseline_origin_x,
+                    .top = baseline_origin_y + underline->offset,
+                    .right = baseline_origin_x + underline->width,
+                    .bottom = baseline_origin_y + underline->offset +
+                              max(underline->thickness, 1.0f)};
+
+    this->d2d_context->FillRectangle(rect, temp_brush);
+    return hr;
+}
+
+HRESULT Renderer::GetCurrentTransform(DWRITE_MATRIX *transform)
+{
+    this->d2d_context->GetTransform(
+        reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
+    return S_OK;
 }

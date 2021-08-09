@@ -1,4 +1,5 @@
 #pragma once
+#include <wrl/client.h>
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
@@ -84,11 +85,12 @@ class Renderer
     ID2D1Device4 *d2d_device = nullptr;
     ID2D1Bitmap1 *d2d_target_bitmap = nullptr;
     ID2D1SolidColorBrush *d2d_background_rect_brush = nullptr;
+    ID2D1SolidColorBrush *drawing_effect_brush;
+    ID2D1SolidColorBrush *temp_brush;
 
     bool disable_ligatures = false;
     IDWriteTypography *dwrite_typography = nullptr;
 
-public:
     ID2D1DeviceContext4 *d2d_context = nullptr;
     Vec<HighlightAttributes> hl_attribs;
     float last_requested_font_size = 0;
@@ -105,7 +107,6 @@ public:
     float font_ascent = 0;
     float font_descent = 0;
 
-private:
     D2D1_SIZE_U pixel_size = {0};
     int grid_rows = 0;
     int grid_cols = 0;
@@ -132,6 +133,16 @@ public:
     GridSize GridSize();
     bool SetDpiScale(float current_dpi, int *pRows, int *pCols);
     bool ResizeFont(float size, int *pRows, int *pCols);
+    HRESULT
+    DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
+                 DWRITE_MEASURING_MODE measuring_mode,
+                 DWRITE_GLYPH_RUN const *glyph_run,
+                 DWRITE_GLYPH_RUN_DESCRIPTION const *glyph_run_description,
+                 IUnknown *client_drawing_effect);
+    HRESULT DrawUnderline(float baseline_origin_x, float baseline_origin_y,
+                          DWRITE_UNDERLINE const *underline,
+                          IUnknown *client_drawing_effect);
+    HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
 private:
     void InitializeD2D();
@@ -141,6 +152,8 @@ private:
     void HandleDeviceLost();
     void CopyFrontToBack();
     float GetTextWidth(wchar_t *text, uint32_t length);
+    void UpdateFontMetrics(float font_size, const char *font_string,
+                           int strlen);
     void UpdateDefaultColors(mpack_node_t default_colors);
     void UpdateHighlightAttributes(mpack_node_t highlight_attribs);
     uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);

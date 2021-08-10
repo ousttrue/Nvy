@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/build/Nvy.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "console": "internalConsole"
         }

@@ -1,5 +1,9 @@
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
+#include <string>
+
+auto WINDOW_CLASS = L"Nvy_Class";
+auto WINDOW_TITLE = L"Nvy";
 
 struct Context
 {
@@ -188,11 +192,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             }
             context->saved_dpi_scaling = current_dpi;
         }
-    }
-        return 0;
-    case WM_DESTROY:
-    {
-        PostQuitMessage(0);
     }
         return 0;
     case WM_NVIM_MESSAGE:
@@ -504,6 +503,107 @@ struct CommandLine
     }
 };
 
+class Win32Window
+{
+    HINSTANCE _instance = nullptr;
+    std::wstring _className;
+    HWND _hwnd = nullptr;
+
+public:
+    Win32Window(HINSTANCE instance)
+    {
+        _instance = instance;
+    }
+
+    ~Win32Window()
+    {
+        DestroyWindow(_hwnd);
+        UnregisterClass(_className.c_str(), _instance);
+    }
+
+    bool Create(const wchar_t *window_class_name, const wchar_t *window_title)
+    {
+        WNDCLASSEX window_class{
+            .cbSize = sizeof(WNDCLASSEX),
+            .style = CS_HREDRAW | CS_VREDRAW,
+            .lpfnWndProc = Win32Window::WndProc,
+            .hInstance = _instance,
+            .hIcon = static_cast<HICON>(
+                LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON,
+                          LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
+            .hCursor = LoadCursor(NULL, IDC_ARROW),
+            .hbrBackground = nullptr,
+            .lpszClassName = window_class_name,
+            .hIconSm = static_cast<HICON>(
+                LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON,
+                          LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))};
+        if (!RegisterClassEx(&window_class))
+        {
+            return false;
+        }
+        _className = window_class_name;
+
+        _hwnd = CreateWindowEx(WS_EX_ACCEPTFILES, window_class_name,
+                               window_title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
+                               CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                               nullptr, nullptr, _instance, this);
+        if (!_hwnd)
+        {
+            return false;
+        }
+        ShowWindow(_hwnd, SW_SHOWDEFAULT);
+
+        return true;
+    }
+
+    LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+    {
+        switch (msg)
+        {
+        case WM_DESTROY:
+        {
+            PostQuitMessage(0);
+            return 0;
+        }
+        }
+
+        return DefWindowProcW(hwnd, msg, wparam, lparam);
+    }
+
+    static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam,
+                                    LPARAM lparam)
+    {
+        if (msg == WM_CREATE)
+        {
+            LPCREATESTRUCT createStruct =
+                reinterpret_cast<LPCREATESTRUCT>(lparam);
+            SetWindowLongPtr(
+                hwnd, GWLP_USERDATA,
+                reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
+            return 0;
+        }
+
+        auto w = reinterpret_cast<Win32Window *>(
+            GetWindowLongPtr(hwnd, GWLP_USERDATA));
+        return w->Proc(hwnd, msg, wparam, lparam);
+    }
+
+    bool ProcessMessage()
+    {
+        MSG msg;
+        if (!GetMessage(&msg, 0, 0, 0))
+        {
+            // exit loop
+            return false;
+        }
+
+        // TranslateMessage(&msg);
+        DispatchMessage(&msg);
+
+        return true;
+    }
+};
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
 {
@@ -511,79 +611,61 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     auto cmd = CommandLine::Get();
 
-    const wchar_t *window_class_name = L"Nvy_Class";
-    const wchar_t *window_title = L"Nvy";
-    WNDCLASSEX window_class{.cbSize = sizeof(WNDCLASSEX),
-                            .style = CS_HREDRAW | CS_VREDRAW,
-                            .lpfnWndProc = WndProc,
-                            .hInstance = instance,
-                            .hIcon = static_cast<HICON>(LoadImage(
-                                GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON,
-                                LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
-                            .hCursor = LoadCursor(NULL, IDC_ARROW),
-                            .hbrBackground = nullptr,
-                            .lpszClassName = window_class_name,
-                            .hIconSm = static_cast<HICON>(LoadImage(
-                                GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON,
-                                LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))};
-    if (!RegisterClassEx(&window_class))
+    Win32Window window(instance);
+    if (!window.Create(WINDOW_CLASS, WINDOW_TITLE))
     {
         return 1;
     }
 
-    Context context{.start_grid_size{.rows = static_cast<int>(cmd.rows),
-                                     .cols = static_cast<int>(cmd.cols)},
-                    .start_maximized = cmd.start_maximized,
+    // Context context{.start_grid_size{.rows = static_cast<int>(cmd.rows),
+    //                                  .cols = static_cast<int>(cmd.cols)},
+    //                 .start_maximized = cmd.start_maximized,
 
-                    .nvim = nullptr,
-                    .renderer = nullptr,
-                    .saved_window_placement =
-                        WINDOWPLACEMENT{.length = sizeof(WINDOWPLACEMENT)}};
+    //                 .nvim = nullptr,
+    //                 .renderer = nullptr,
+    //                 .saved_window_placement =
+    //                     WINDOWPLACEMENT{.length =
+    //                     sizeof(WINDOWPLACEMENT)}};
 
-    HWND hwnd = CreateWindowEx(WS_EX_ACCEPTFILES, window_class_name,
-                               window_title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
-                               CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                               nullptr, nullptr, instance, &context);
-    if (hwnd == NULL)
+    // Nvim nvim(cmd.nvim_command_line, hwnd);
+    // context.nvim = &nvim;
+    // context.hwnd = hwnd;
+    // RECT window_rect;
+    // DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS,
+    // &window_rect,
+    //                       sizeof(RECT));
+    // HMONITOR monitor = MonitorFromPoint({window_rect.left,
+    // window_rect.top},
+    //                                     MONITOR_DEFAULTTONEAREST);
+    // GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI,
+    // &(context.saved_dpi_scaling),
+    //                  &(context.saved_dpi_scaling));
+
+    // Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
+    //                   context.saved_dpi_scaling);
+    // context.renderer = &renderer;
+
+    while (window.ProcessMessage())
     {
-        return 1;
-    }
-    Nvim nvim(cmd.nvim_command_line, hwnd);
-    context.nvim = &nvim;
-    context.hwnd = hwnd;
-    RECT window_rect;
-    DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
-                          sizeof(RECT));
-    HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
-                                        MONITOR_DEFAULTTONEAREST);
-    GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling),
-                     &(context.saved_dpi_scaling));
-
-    Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-                      context.saved_dpi_scaling);
-    context.renderer = &renderer;
-
-    MSG msg;
-    uint32_t previous_width = 0, previous_height = 0;
-    while (GetMessage(&msg, 0, 0, 0))
-    {
-        // TranslateMessage(&msg);
-        DispatchMessage(&msg);
-        if (previous_width != context.saved_window_width ||
-            previous_height != context.saved_window_height)
-        {
-            previous_width = context.saved_window_width;
-            previous_height = context.saved_window_height;
-            auto [rows, cols] = context.renderer->PixelsToGridSize(
-                context.saved_window_width, context.saved_window_height);
-            context.renderer->Resize(context.saved_window_width,
-                                     context.saved_window_height);
-            context.nvim->SendResize(rows, cols);
-        }
     }
 
-    UnregisterClass(window_class_name, instance);
-    DestroyWindow(hwnd);
+    // uint32_t previous_width = 0, previous_height = 0;
+    // while (GetMessage(&msg, 0, 0, 0))
+    // {
+    //     // TranslateMessage(&msg);
+    //     DispatchMessage(&msg);
+    //     if (previous_width != context.saved_window_width ||
+    //         previous_height != context.saved_window_height)
+    //     {
+    //         previous_width = context.saved_window_width;
+    //         previous_height = context.saved_window_height;
+    //         auto [rows, cols] = context.renderer->PixelsToGridSize(
+    //             context.saved_window_width, context.saved_window_height);
+    //         context.renderer->Resize(context.saved_window_width,
+    //                                  context.saved_window_height);
+    //         context.nvim->SendResize(rows, cols);
+    //     }
+    // }
 
     return 0;
 }

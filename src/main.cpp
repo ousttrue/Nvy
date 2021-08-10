@@ -16,7 +16,6 @@ struct Context
     bool xbuttons[2];
     GridPoint cached_cursor_grid_pos;
     WINDOWPLACEMENT saved_window_placement;
-    UINT saved_dpi_scaling;
     uint32_t saved_window_width;
     uint32_t saved_window_height;
 
@@ -143,54 +142,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             uint32_t new_height = HIWORD(lparam);
             context->saved_window_height = new_height;
             context->saved_window_width = new_width;
-        }
-    }
-        return 0;
-    case WM_MOVE:
-    {
-        RECT window_rect;
-        DwmGetWindowAttribute(
-            hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
-            sizeof(RECT)); // Get window position without shadows
-        HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
-                                            MONITOR_DEFAULTTONEAREST);
-        UINT current_dpi = 0;
-        GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi,
-                         &current_dpi);
-        if (current_dpi != context->saved_dpi_scaling)
-        {
-            float dpi_scale = static_cast<float>(current_dpi) /
-                              static_cast<float>(context->saved_dpi_scaling);
-            GetWindowRect(hwnd,
-                          &window_rect); // Window RECT with shadows
-            int new_window_width =
-                (window_rect.right - window_rect.left) * dpi_scale + 0.5f;
-            int new_window_height =
-                (window_rect.bottom - window_rect.top) * dpi_scale + 0.5f;
-
-            // Make sure window is not larger than the actual
-            // monitor
-            MONITORINFO monitor_info;
-            monitor_info.cbSize = sizeof(monitor_info);
-            GetMonitorInfo(monitor, &monitor_info);
-            uint32_t monitor_width =
-                monitor_info.rcWork.right - monitor_info.rcWork.left;
-            uint32_t monitor_height =
-                monitor_info.rcWork.bottom - monitor_info.rcWork.top;
-            if (new_window_width > monitor_width)
-                new_window_width = monitor_width;
-            if (new_window_height > monitor_height)
-                new_window_height = monitor_height;
-
-            SetWindowPos(hwnd, nullptr, 0, 0, new_window_width,
-                         new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
-
-            int rows, cols;
-            if (context->renderer->SetDpiScale(current_dpi, &rows, &cols))
-            {
-                context->nvim->SendResize(rows, cols);
-            }
-            context->saved_dpi_scaling = current_dpi;
         }
     }
         return 0;
@@ -510,6 +461,7 @@ class Win32Window
     HWND _hwnd = nullptr;
 
 public:
+    UINT _saved_dpi_scaling = 0;
     Win32Window(HINSTANCE instance)
     {
         _instance = instance;
@@ -521,7 +473,7 @@ public:
         UnregisterClass(_className.c_str(), _instance);
     }
 
-    bool Create(const wchar_t *window_class_name, const wchar_t *window_title)
+    HWND Create(const wchar_t *window_class_name, const wchar_t *window_title)
     {
         WNDCLASSEX window_class{
             .cbSize = sizeof(WNDCLASSEX),
@@ -539,7 +491,7 @@ public:
                           LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))};
         if (!RegisterClassEx(&window_class))
         {
-            return false;
+            return nullptr;
         }
         _className = window_class_name;
 
@@ -549,11 +501,11 @@ public:
                                nullptr, nullptr, _instance, this);
         if (!_hwnd)
         {
-            return false;
+            return nullptr;
         }
         ShowWindow(_hwnd, SW_SHOWDEFAULT);
 
-        return true;
+        return _hwnd;
     }
 
     LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -563,6 +515,55 @@ public:
         case WM_DESTROY:
         {
             PostQuitMessage(0);
+            return 0;
+        }
+
+        case WM_MOVE:
+        {
+            RECT window_rect;
+            DwmGetWindowAttribute(
+                hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
+                sizeof(RECT)); // Get window position without shadows
+            HMONITOR monitor = MonitorFromPoint(
+                {window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
+            UINT current_dpi = 0;
+            GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi,
+                             &current_dpi);
+            if (current_dpi != _saved_dpi_scaling)
+            {
+                float dpi_scale = static_cast<float>(current_dpi) /
+                                  static_cast<float>(_saved_dpi_scaling);
+                GetWindowRect(hwnd,
+                              &window_rect); // Window RECT with shadows
+                int new_window_width =
+                    (window_rect.right - window_rect.left) * dpi_scale + 0.5f;
+                int new_window_height =
+                    (window_rect.bottom - window_rect.top) * dpi_scale + 0.5f;
+
+                // Make sure window is not larger than the actual
+                // monitor
+                MONITORINFO monitor_info;
+                monitor_info.cbSize = sizeof(monitor_info);
+                GetMonitorInfo(monitor, &monitor_info);
+                uint32_t monitor_width =
+                    monitor_info.rcWork.right - monitor_info.rcWork.left;
+                uint32_t monitor_height =
+                    monitor_info.rcWork.bottom - monitor_info.rcWork.top;
+                if (new_window_width > monitor_width)
+                    new_window_width = monitor_width;
+                if (new_window_height > monitor_height)
+                    new_window_height = monitor_height;
+
+                SetWindowPos(hwnd, nullptr, 0, 0, new_window_width,
+                             new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
+
+                _saved_dpi_scaling = current_dpi;
+                // if (context->renderer->SetDpiScale(current_dpi, &rows,
+                // &cols))
+                // {
+                //     context->nvim->SendResize(rows, cols);
+                // }
+            }
             return 0;
         }
         }
@@ -612,7 +613,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     auto cmd = CommandLine::Get();
 
     Win32Window window(instance);
-    if (!window.Create(WINDOW_CLASS, WINDOW_TITLE))
+    auto hwnd = window.Create(WINDOW_CLASS, WINDOW_TITLE);
+    if (!hwnd)
     {
         return 1;
     }
@@ -641,12 +643,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     // &(context.saved_dpi_scaling),
     //                  &(context.saved_dpi_scaling));
 
-    // Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-    //                   context.saved_dpi_scaling);
+    Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
+                      window._saved_dpi_scaling);
     // context.renderer = &renderer;
 
     while (window.ProcessMessage())
     {
+        renderer.Flush();
     }
 
     // uint32_t previous_width = 0, previous_height = 0;

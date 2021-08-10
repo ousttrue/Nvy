@@ -578,6 +578,16 @@ public:
         d3d_context->CopyResource(back.Get(), front.Get());
         return S_OK;
     }
+
+    HRESULT Present()
+    {
+        HRESULT hr = this->_dxgi_swapchain->Present(0, 0);
+        if (FAILED(hr))
+        {
+            return hr;
+        }
+        return hr;
+    }
 };
 
 void Renderer::InitializeWindowDependentResources()
@@ -586,7 +596,7 @@ void Renderer::InitializeWindowDependentResources()
     {
         uint32_t w, h;
         std::tie(w, h) = this->_swapchain->GetSize();
-        if (_pixel_size.width == w &&_pixel_size.height == h)
+        if (_pixel_size.width == w && _pixel_size.height == h)
         {
             // not resized. use same bitmap
             return;
@@ -694,7 +704,8 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
         mpack_node_t attrib_map =
             mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 1);
 
-        const auto SetColor = [&](const char *name, uint32_t *color) {
+        const auto SetColor = [&](const char *name, uint32_t *color)
+        {
             mpack_node_t color_node =
                 mpack_node_map_cstr_optional(attrib_map, name);
             if (!mpack_node_is_missing(color_node))
@@ -710,8 +721,9 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
         SetColor("background", &this->_hl_attribs[attrib_index].background);
         SetColor("special", &this->_hl_attribs[attrib_index].special);
 
-        const auto SetFlag = [&](const char *flag_name,
-                                 HighlightAttributeFlags flag) {
+        const auto SetFlag =
+            [&](const char *flag_name, HighlightAttributeFlags flag)
+        {
             mpack_node_t flag_node =
                 mpack_node_map_cstr_optional(attrib_map, flag_name);
             if (!mpack_node_is_missing(flag_node))
@@ -1648,4 +1660,10 @@ HRESULT Renderer::GetCurrentTransform(DWRITE_MATRIX *transform)
 void Renderer::UpdateFont(float font_size, const char *font_string, int strlen)
 {
     _dwrite->UpdateFont(font_size, font_string, strlen);
+}
+
+void Renderer::Flush()
+{
+    InitializeWindowDependentResources();
+    _swapchain->Present();
 }

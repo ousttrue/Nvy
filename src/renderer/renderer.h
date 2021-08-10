@@ -118,6 +118,7 @@ public:
                           IUnknown *client_drawing_effect);
     HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
+    void Flush();
 private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();

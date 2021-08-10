@@ -398,7 +398,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         if (should_resize_font)
         {
             int rows, cols;
-            if(context->renderer->ResizeFont(scroll_amount * 2.0f, &rows, &cols))
+            if (context->renderer->ResizeFont(scroll_amount * 2.0f, &rows,
+                                              &cols))
             {
                 context->nvim->SendResize(rows, cols);
             }
@@ -431,68 +432,84 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
-                    PWSTR p_cmd_line, int n_cmd_show)
+const int MAX_NVIM_CMD_LINE_SIZE = 32767;
+struct CommandLine
 {
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-
-    int n_args;
-    LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
     bool start_maximized = false;
     bool disable_ligatures = false;
     float linespace_factor = 1.0f;
     int64_t rows = 0;
     int64_t cols = 0;
-
-    constexpr int MAX_NVIM_CMD_LINE_SIZE = 32767;
     wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE] = {};
-    wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
-    int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
 
-    // Skip argv[0]
-    for (int i = 1; i < n_args; ++i)
+    void Parse()
     {
-        if (!wcscmp(cmd_line_args[i], L"--maximize"))
+        int n_args;
+        auto cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
+        int cmd_line_size_left =
+            MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
+        wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
+
+        // Skip argv[0]
+        for (int i = 1; i < n_args; ++i)
         {
-            start_maximized = true;
-        }
-        else if (!wcscmp(cmd_line_args[i], L"--disable-ligatures"))
-        {
-            disable_ligatures = true;
-        }
-        else if (!wcsncmp(cmd_line_args[i], L"--geometry=",
-                          wcslen(L"--geometry=")))
-        {
-            wchar_t *end_ptr;
-            cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
-            rows = wcstol(end_ptr + 1, nullptr, 10);
-        }
-        else if (!wcsncmp(cmd_line_args[i], L"--linespace-factor=",
-                          wcslen(L"--linespace-factor=")))
-        {
-            wchar_t *end_ptr;
-            float factor = wcstof(&cmd_line_args[i][19], &end_ptr);
-            if (factor > 0.0f && factor < 20.0f)
+            if (!wcscmp(cmd_line_args[i], L"--maximize"))
             {
-                linespace_factor = factor;
+                start_maximized = true;
             }
-        }
-        // Otherwise assume the argument is a filename to open
-        else
-        {
-            size_t arg_size = wcslen(cmd_line_args[i]);
-            if (arg_size <= (cmd_line_size_left + 3))
+            else if (!wcscmp(cmd_line_args[i], L"--disable-ligatures"))
             {
-                wcscat_s(nvim_command_line, cmd_line_size_left, L" \"");
-                cmd_line_size_left -= 2;
-                wcscat_s(nvim_command_line, cmd_line_size_left,
-                         cmd_line_args[i]);
-                cmd_line_size_left -= arg_size;
-                wcscat_s(nvim_command_line, cmd_line_size_left, L"\"");
-                cmd_line_size_left -= 1;
+                disable_ligatures = true;
+            }
+            else if (!wcsncmp(cmd_line_args[i], L"--geometry=",
+                              wcslen(L"--geometry=")))
+            {
+                wchar_t *end_ptr;
+                cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
+                rows = wcstol(end_ptr + 1, nullptr, 10);
+            }
+            else if (!wcsncmp(cmd_line_args[i], L"--linespace-factor=",
+                              wcslen(L"--linespace-factor=")))
+            {
+                wchar_t *end_ptr;
+                float factor = wcstof(&cmd_line_args[i][19], &end_ptr);
+                if (factor > 0.0f && factor < 20.0f)
+                {
+                    linespace_factor = factor;
+                }
+            }
+            // Otherwise assume the argument is a filename to open
+            else
+            {
+                size_t arg_size = wcslen(cmd_line_args[i]);
+                if (arg_size <= (cmd_line_size_left + 3))
+                {
+                    wcscat_s(nvim_command_line, cmd_line_size_left, L" \"");
+                    cmd_line_size_left -= 2;
+                    wcscat_s(nvim_command_line, cmd_line_size_left,
+                             cmd_line_args[i]);
+                    cmd_line_size_left -= arg_size;
+                    wcscat_s(nvim_command_line, cmd_line_size_left, L"\"");
+                    cmd_line_size_left -= 1;
+                }
             }
         }
     }
+
+    static CommandLine Get()
+    {
+        CommandLine cmd;
+        cmd.Parse();
+        return cmd;
+    }
+};
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
+                    PWSTR p_cmd_line, int n_cmd_show)
+{
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+
+    auto cmd = CommandLine::Get();
 
     const wchar_t *window_class_name = L"Nvy_Class";
     const wchar_t *window_title = L"Nvy";
@@ -509,15 +526,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                             .hIconSm = static_cast<HICON>(LoadImage(
                                 GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON,
                                 LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))};
-
     if (!RegisterClassEx(&window_class))
     {
         return 1;
     }
 
-    Context context{.start_grid_size{.rows = static_cast<int>(rows),
-                                     .cols = static_cast<int>(cols)},
-                    .start_maximized = start_maximized,
+    Context context{.start_grid_size{.rows = static_cast<int>(cmd.rows),
+                                     .cols = static_cast<int>(cmd.cols)},
+                    .start_maximized = cmd.start_maximized,
 
                     .nvim = nullptr,
                     .renderer = nullptr,
@@ -532,7 +548,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     {
         return 1;
     }
-    Nvim nvim(nvim_command_line, hwnd);
+    Nvim nvim(cmd.nvim_command_line, hwnd);
     context.nvim = &nvim;
     context.hwnd = hwnd;
     RECT window_rect;
@@ -543,7 +559,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling),
                      &(context.saved_dpi_scaling));
 
-    Renderer renderer(hwnd, disable_ligatures, linespace_factor,
+    Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
                       context.saved_dpi_scaling);
     context.renderer = &renderer;
 

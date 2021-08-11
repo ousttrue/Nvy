@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 
 enum NvimRequest : uint8_t
 {
@@ -38,12 +39,14 @@ enum class MouseAction
 };
 constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
+using MessageCallback = std::function<void(const mpack_tree_t *)>;
+
 class Nvim
 {
     class NvimImpl *_impl;
 
 public:
-    Nvim(wchar_t *command_line, HWND hwnd);
+    Nvim(wchar_t *command_line, const MessageCallback &callback);
     ~Nvim();
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;

@@ -126,28 +126,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     Context *context =
         reinterpret_cast<Context *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-    if (msg == WM_CREATE)
-    {
-        LPCREATESTRUCT createStruct = reinterpret_cast<LPCREATESTRUCT>(lparam);
-        SetWindowLongPtr(
-            hwnd, GWLP_USERDATA,
-            reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
-        return 0;
-    }
-
     switch (msg)
     {
-    case WM_SIZE:
-    {
-        if (wparam != SIZE_MINIMIZED)
-        {
-            uint32_t new_width = LOWORD(lparam);
-            uint32_t new_height = HIWORD(lparam);
-            context->saved_window_height = new_height;
-            context->saved_window_width = new_width;
-        }
-    }
-        return 0;
     case WM_NVIM_MESSAGE:
     {
         mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
@@ -459,7 +439,8 @@ struct CommandLine
 
 enum class WindowEventTypes
 {
-    Dpi,
+    SizeChanged,
+    DpiChanged,
 };
 
 struct WindowEvent
@@ -467,6 +448,11 @@ struct WindowEvent
     WindowEventTypes type;
     union
     {
+        struct
+        {
+            uint32_t width;
+            uint32_t height;
+        };
         uint32_t dpi;
     };
 };
@@ -538,6 +524,19 @@ public:
             return 0;
         }
 
+        case WM_SIZE:
+        {
+            if (wparam != SIZE_MINIMIZED)
+            {
+                RaiseEvent({
+                    .type = WindowEventTypes::SizeChanged,
+                    .width = LOWORD(lparam),
+                    .height = HIWORD(lparam),
+                });
+            }
+            return 0;
+        }
+
         case WM_MOVE:
         {
             RECT window_rect;
@@ -579,7 +578,7 @@ public:
 
                 _saved_dpi_scaling = current_dpi;
                 RaiseEvent({
-                    .type = WindowEventTypes::Dpi,
+                    .type = WindowEventTypes::DpiChanged,
                     .dpi = current_dpi,
                 });
             }
@@ -662,7 +661,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     //                     WINDOWPLACEMENT{.length =
     //                     sizeof(WINDOWPLACEMENT)}};
 
-    // Nvim nvim(cmd.nvim_command_line, hwnd);
     // context.nvim = &nvim;
     // context.hwnd = hwnd;
     // RECT window_rect;
@@ -695,34 +693,31 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         {
             switch (event.type)
             {
-            case WindowEventTypes::Dpi:
+            case WindowEventTypes::SizeChanged:
+                renderer.Resize(event.width, event.height);
+                break;
+            case WindowEventTypes::DpiChanged:
                 renderer.SetDpiScale(event.dpi);
                 break;
             }
         });
 
-    while (window.ProcessMessage())
     {
-        renderer.Flush();
-    }
+        Nvim nvim(cmd.nvim_command_line,
+                  [hwnd](const mpack_tree_t *tree)
+                  {
+                      if (!tree)
+                      {
+                          // exit nvim
+                          PostMessage(hwnd, WM_DESTROY, 0, 0);
+                      }
+                  });
 
-    // uint32_t previous_width = 0, previous_height = 0;
-    // while (GetMessage(&msg, 0, 0, 0))
-    // {
-    //     // TranslateMessage(&msg);
-    //     DispatchMessage(&msg);
-    //     if (previous_width != context.saved_window_width ||
-    //         previous_height != context.saved_window_height)
-    //     {
-    //         previous_width = context.saved_window_width;
-    //         previous_height = context.saved_window_height;
-    //         auto [rows, cols] = context.renderer->PixelsToGridSize(
-    //             context.saved_window_width, context.saved_window_height);
-    //         context.renderer->Resize(context.saved_window_width,
-    //                                  context.saved_window_height);
-    //         context.nvim->SendResize(rows, cols);
-    //     }
-    // }
+        while (window.ProcessMessage())
+        {
+            renderer.Flush();
+        }
+    }
 
     return 0;
 }

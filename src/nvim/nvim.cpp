@@ -1,6 +1,7 @@
 #include "nvim.h"
 #include "common/mpack_helper.h"
 #include "third_party/mpack/mpack.h"
+#include <thread>
 
 constexpr int Megabytes(int n)
 {
@@ -22,31 +23,22 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count)
 
 class NvimImpl
 {
-    HWND hwnd = nullptr;
+    MessageCallback _callback;
 
     HANDLE stdin_read = nullptr;
     HANDLE stdin_write = nullptr;
     HANDLE stdout_read = nullptr;
     HANDLE stdout_write = nullptr;
     PROCESS_INFORMATION process_info = {0};
+    std::thread _message;
+    std::thread _process;
 
     int64_t next_msg_id = 0;
     Vec<NvimRequest> msg_id_to_method;
 
 public:
-    static DWORD WINAPI NvimMessageHandler(LPVOID param)
-    {
-        auto nvim = static_cast<NvimImpl *>(param);
-        return nvim->MessageHandler();
-    }
-
-    static DWORD WINAPI NvimProcessMonitor(LPVOID param)
-    {
-        auto nvim = static_cast<NvimImpl *>(param);
-        return nvim->ProcessMonitor();
-    }
-
-    NvimImpl(HWND hwnd, wchar_t *command_line) : hwnd(hwnd)
+    NvimImpl(wchar_t *command_line, const MessageCallback &callback)
+        : _callback(callback)
     {
         HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info{
@@ -73,8 +65,8 @@ public:
         AssignProcessToJobObject(job_object, this->process_info.hProcess);
 
         DWORD _;
-        CreateThread(nullptr, 0, NvimMessageHandler, this, 0, &_);
-        CreateThread(nullptr, 0, NvimProcessMonitor, this, 0, &_);
+        _message = std::thread(std::bind(&NvimImpl::MessageHandler, this));
+        _process = std::thread(std::bind(&NvimImpl::ProcessMonitor, this));
 
         // Query api info
         char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
@@ -123,6 +115,9 @@ public:
             CloseHandle(this->process_info.hThread);
             TerminateProcess(this->process_info.hProcess, 0);
             CloseHandle(this->process_info.hProcess);
+
+            _message.join();
+            _process.join();
         }
     }
 
@@ -165,8 +160,7 @@ public:
 
     DWORD MessageHandler()
     {
-        mpack_tree_t *tree =
-            static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
+        auto tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
         mpack_tree_init_stream(tree, ReadFromNvim, this->stdout_read,
                                Megabytes(20), 1024 * 1024);
 
@@ -179,13 +173,15 @@ public:
             }
 
             // Blocking, dubious thread safety. Seems to work though...
-            SendMessage(this->hwnd, WM_NVIM_MESSAGE,
-                        reinterpret_cast<WPARAM>(tree), 0);
+            _callback(tree);
         }
 
         mpack_tree_destroy(tree);
         free(tree);
-        PostMessage(this->hwnd, WM_DESTROY, 0, 0);
+
+        // end
+        _callback(nullptr);
+
         return 0;
     }
 
@@ -204,7 +200,10 @@ public:
                 break;
             }
         }
-        PostMessage(this->hwnd, WM_DESTROY, 0, 0);
+
+        // end
+        _callback(nullptr);
+
         return 0;
     }
 
@@ -214,8 +213,8 @@ public:
     }
 };
 
-Nvim::Nvim(wchar_t *command_line, HWND hwnd)
-    : _impl(new NvimImpl(hwnd, command_line))
+Nvim::Nvim(wchar_t *command_line, const MessageCallback &callback)
+    : _impl(new NvimImpl(command_line, callback))
 {
 }
 

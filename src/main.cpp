@@ -1,6 +1,9 @@
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
+#include <stdint.h>
 #include <string>
+#include <functional>
+#include <list>
 
 auto WINDOW_CLASS = L"Nvy_Class";
 auto WINDOW_TITLE = L"Nvy";
@@ -454,11 +457,28 @@ struct CommandLine
     }
 };
 
+enum class WindowEventTypes
+{
+    Dpi,
+};
+
+struct WindowEvent
+{
+    WindowEventTypes type;
+    union
+    {
+        uint32_t dpi;
+    };
+};
+
+using WindowEventCallback = std::function<void(const WindowEvent &)>;
+
 class Win32Window
 {
     HINSTANCE _instance = nullptr;
     std::wstring _className;
     HWND _hwnd = nullptr;
+    std::list<WindowEventCallback> _callbacks;
 
 public:
     UINT _saved_dpi_scaling = 0;
@@ -558,11 +578,10 @@ public:
                              new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
                 _saved_dpi_scaling = current_dpi;
-                // if (context->renderer->SetDpiScale(current_dpi, &rows,
-                // &cols))
-                // {
-                //     context->nvim->SendResize(rows, cols);
-                // }
+                RaiseEvent({
+                    .type = WindowEventTypes::Dpi,
+                    .dpi = current_dpi,
+                });
             }
             return 0;
         }
@@ -602,6 +621,20 @@ public:
         DispatchMessage(&msg);
 
         return true;
+    }
+
+    void OnEvent(const std::function<void(const WindowEvent &)> &callback)
+    {
+        _callbacks.push_back(callback);
+    }
+
+private:
+    void RaiseEvent(const WindowEvent &event)
+    {
+        for (auto &callback : _callbacks)
+        {
+            callback(event);
+        }
     }
 };
 
@@ -645,7 +678,28 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
                       window._saved_dpi_scaling);
-    // context.renderer = &renderer;
+
+    renderer.OnEvent(
+        [](const RendererEvent &event)
+        {
+            switch (event.type)
+            {
+            case RendererEventTypes::GridSizeChanged:
+                // nvim->SendResize(rows, cols);
+                break;
+            }
+        });
+
+    window.OnEvent(
+        [&renderer](const WindowEvent &event)
+        {
+            switch (event.type)
+            {
+            case WindowEventTypes::Dpi:
+                renderer.SetDpiScale(event.dpi);
+                break;
+            }
+        });
 
     while (window.ProcessMessage())
     {

@@ -1480,13 +1480,19 @@ GridSize Renderer::GridSize()
     return PixelsToGridSize(_pixel_size.width, _pixel_size.height);
 }
 
-bool Renderer::SetDpiScale(float current_dpi, int *pRows, int *pCols)
+void Renderer::SetDpiScale(float current_dpi)
 {
     _dwrite->SetDpiScale(current_dpi);
     auto [rows, cols] = GridSize();
-    *pRows = rows;
-    *pCols = cols;
-    return rows != _grid_rows || cols != _grid_cols;
+    if (rows != _grid_rows || cols != _grid_cols)
+    {
+        _grid_rows = rows;
+        _grid_cols = cols;
+        RendererEvent({
+            .type = RendererEventTypes::GridSizeChanged,
+            .gridSize = {rows, cols},
+        });
+    }
 }
 
 bool Renderer::ResizeFont(float size, int *pRows, int *pCols)
@@ -1666,4 +1672,17 @@ void Renderer::Flush()
 {
     InitializeWindowDependentResources();
     _swapchain->Present();
+}
+
+void Renderer::OnEvent(const RendererEventCallback &callback)
+{
+    _callbacks.push_back(callback);
+}
+
+void Renderer::RaiseEvent(const RendererEvent &event)
+{
+    for (auto &callback : _callbacks)
+    {
+        callback(event);
+    }
 }

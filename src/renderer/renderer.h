@@ -1,6 +1,8 @@
 #pragma once
 #include <wrl/client.h>
 #include <memory>
+#include <functional>
+#include <list>
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
@@ -70,6 +72,21 @@ constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr int MAX_FONT_LENGTH = 128;
 constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
+
+enum class RendererEventTypes
+{
+    GridSizeChanged,
+};
+struct RendererEvent
+{
+    RendererEventTypes type;
+    union
+    {
+        GridSize gridSize;
+    };
+};
+using RendererEventCallback = std::function<void(const RendererEvent &)>;
+
 class Renderer
 {
     std::unique_ptr<class DeviceImpl> _device;
@@ -92,6 +109,8 @@ class Renderer
     bool _draw_active = false;
     bool _ui_busy = false;
 
+    std::list<RendererEventCallback> _callbacks;
+
 public:
     Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
              float monitor_dpi);
@@ -105,7 +124,7 @@ public:
     GridSize PixelsToGridSize(int width, int height);
     GridPoint CursorToGridPoint(int x, int y);
     GridSize GridSize();
-    bool SetDpiScale(float current_dpi, int *pRows, int *pCols);
+    void SetDpiScale(float current_dpi);
     bool ResizeFont(float size, int *pRows, int *pCols);
     HRESULT
     DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
@@ -119,7 +138,12 @@ public:
     HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
     void Flush();
+
+    void OnEvent(const RendererEventCallback &callback);
+
 private:
+    void RaiseEvent(const RendererEvent &event);
+
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
     void UpdateDefaultColors(mpack_node_t default_colors);

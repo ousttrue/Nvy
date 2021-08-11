@@ -639,15 +639,10 @@ void Renderer::HandleDeviceLost()
                      static_cast<int>(strlen(DEFAULT_FONT)));
 }
 
-Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-                   float monitor_dpi)
-    : _dwrite(
-          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi))
+Renderer::Renderer(bool disable_ligatures, float linespace_factor)
+    : _disable_ligatures(disable_ligatures), _linespace_factor(linespace_factor)
 {
-    this->_hwnd = hwnd;
     this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
-
-    this->HandleDeviceLost();
 }
 
 Renderer::~Renderer()
@@ -656,8 +651,11 @@ Renderer::~Renderer()
     free(this->_grid_cell_properties);
 }
 
-void Renderer::Attach()
+void Renderer::Attach(HWND hwnd)
 {
+    this->_hwnd = hwnd;
+    HandleDeviceLost();
+
     RECT client_rect;
     GetClientRect(this->_hwnd, &client_rect);
     _pixel_size.width =
@@ -1480,9 +1478,17 @@ GridSize Renderer::GridSize()
     return PixelsToGridSize(_pixel_size.width, _pixel_size.height);
 }
 
-void Renderer::SetDpiScale(float current_dpi)
+void Renderer::SetDpiScale(float monitor_dpi)
 {
-    _dwrite->SetDpiScale(current_dpi);
+    if (!_dwrite)
+    {
+        _dwrite = DWriteImpl::Create(this->_disable_ligatures,
+                                     this->_linespace_factor, monitor_dpi);
+    }
+    else
+    {
+        _dwrite->SetDpiScale(monitor_dpi);
+    }
     auto [rows, cols] = GridSize();
     if (rows != _grid_rows || cols != _grid_cols)
     {

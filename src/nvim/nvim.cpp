@@ -213,14 +213,18 @@ public:
     }
 };
 
-Nvim::Nvim(wchar_t *command_line, const MessageCallback &callback)
-    : _impl(new NvimImpl(command_line, callback))
+Nvim::Nvim()
 {
 }
 
 Nvim::~Nvim()
 {
     delete _impl;
+}
+
+void Nvim::Launch(wchar_t *command_line, const MessageCallback &callback)
+{
+    _impl = new NvimImpl(command_line, callback);
 }
 
 void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)

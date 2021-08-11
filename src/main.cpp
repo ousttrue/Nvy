@@ -93,7 +93,7 @@ struct Context
 
                 // Attach the renderer now that the window size is
                 // determined
-                renderer->Attach();
+                // renderer->Attach();
                 auto [rows, cols] = renderer->GridSize();
                 nvim->SendUIAttach(rows, cols);
 
@@ -465,9 +465,9 @@ class Win32Window
     std::wstring _className;
     HWND _hwnd = nullptr;
     std::list<WindowEventCallback> _callbacks;
+    UINT _saved_dpi_scaling = 0;
 
 public:
-    UINT _saved_dpi_scaling = 0;
     Win32Window(HINSTANCE instance)
     {
         _instance = instance;
@@ -576,11 +576,14 @@ public:
                 SetWindowPos(hwnd, nullptr, 0, 0, new_window_width,
                              new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
-                _saved_dpi_scaling = current_dpi;
-                RaiseEvent({
-                    .type = WindowEventTypes::DpiChanged,
-                    .dpi = current_dpi,
-                });
+                if (current_dpi != _saved_dpi_scaling)
+                {
+                    _saved_dpi_scaling = current_dpi;
+                    RaiseEvent({
+                        .type = WindowEventTypes::DpiChanged,
+                        .dpi = current_dpi,
+                    });
+                }
             }
             return 0;
         }
@@ -645,49 +648,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     auto cmd = CommandLine::Get();
 
     Win32Window window(instance);
-    auto hwnd = window.Create(WINDOW_CLASS, WINDOW_TITLE);
-    if (!hwnd)
-    {
-        return 1;
-    }
+    Renderer renderer(cmd.disable_ligatures, cmd.linespace_factor);
+    Nvim nvim;
 
-    // Context context{.start_grid_size{.rows = static_cast<int>(cmd.rows),
-    //                                  .cols = static_cast<int>(cmd.cols)},
-    //                 .start_maximized = cmd.start_maximized,
-
-    //                 .nvim = nullptr,
-    //                 .renderer = nullptr,
-    //                 .saved_window_placement =
-    //                     WINDOWPLACEMENT{.length =
-    //                     sizeof(WINDOWPLACEMENT)}};
-
-    // context.nvim = &nvim;
-    // context.hwnd = hwnd;
-    // RECT window_rect;
-    // DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS,
-    // &window_rect,
-    //                       sizeof(RECT));
-    // HMONITOR monitor = MonitorFromPoint({window_rect.left,
-    // window_rect.top},
-    //                                     MONITOR_DEFAULTTONEAREST);
-    // GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI,
-    // &(context.saved_dpi_scaling),
-    //                  &(context.saved_dpi_scaling));
-
-    Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-                      window._saved_dpi_scaling);
-
-    renderer.OnEvent(
-        [](const RendererEvent &event)
-        {
-            switch (event.type)
-            {
-            case RendererEventTypes::GridSizeChanged:
-                // nvim->SendResize(rows, cols);
-                break;
-            }
-        });
-
+    // connect event
     window.OnEvent(
         [&renderer](const WindowEvent &event)
         {
@@ -702,21 +666,39 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
             }
         });
 
-    {
-        Nvim nvim(cmd.nvim_command_line,
-                  [hwnd](const mpack_tree_t *tree)
-                  {
-                      if (!tree)
-                      {
-                          // exit nvim
-                          PostMessage(hwnd, WM_DESTROY, 0, 0);
-                      }
-                  });
-
-        while (window.ProcessMessage())
+    renderer.OnEvent(
+        [&nvim](const RendererEvent &event)
         {
-            renderer.Flush();
-        }
+            switch (event.type)
+            {
+            case RendererEventTypes::GridSizeChanged:
+                nvim.SendResize(event.gridSize.rows, event.gridSize.cols);
+                break;
+            }
+        });
+
+    // launch
+    auto hwnd = window.Create(WINDOW_CLASS, WINDOW_TITLE);
+    if (!hwnd)
+    {
+        return 1;
+    }
+    renderer.Attach(hwnd);
+
+    nvim.Launch(cmd.nvim_command_line,
+                // call from thread
+                [hwnd](const mpack_tree_t *tree)
+                {
+                    if (tree == nullptr)
+                    {
+                        // on exit nvim
+                        PostMessage(hwnd, WM_DESTROY, 0, 0);
+                    }
+                });
+
+    while (window.ProcessMessage())
+    {
+        renderer.Flush();
     }
 
     return 0;

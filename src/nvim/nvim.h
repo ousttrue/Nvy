@@ -43,14 +43,15 @@ using MessageCallback = std::function<void(const mpack_tree_t *)>;
 
 class Nvim
 {
-    class NvimImpl *_impl;
+    class NvimImpl *_impl = nullptr;
 
 public:
-    Nvim(wchar_t *command_line, const MessageCallback &callback);
+    Nvim();
     ~Nvim();
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;
 
+    void Launch(wchar_t *command_line, const MessageCallback &callback);
     void ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out);
     void SendUIAttach(int grid_rows, int grid_cols);
     void SendResize(int grid_rows, int grid_cols);

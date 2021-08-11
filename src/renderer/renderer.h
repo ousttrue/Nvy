@@ -89,6 +89,9 @@ using RendererEventCallback = std::function<void(const RendererEvent &)>;
 
 class Renderer
 {
+    bool _disable_ligatures = false;
+    float _linespace_factor = 0;
+
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
@@ -112,10 +115,10 @@ class Renderer
     std::list<RendererEventCallback> _callbacks;
 
 public:
-    Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-             float monitor_dpi);
+    Renderer(bool disable_ligatures, float linespace_factor);
     ~Renderer();
-    void Attach();
+
+    void Attach(HWND hwnd);
     void Resize(uint32_t width, uint32_t height);
     void UpdateGuiFont(const char *guifont, size_t strlen);
     void UpdateFont(float font_size, const char *font_string, int strlen);

@@ -9,6 +9,12 @@ enum class WindowEventTypes
     SizeChanged,
     DpiChanged,
     FileDroped,
+    MouseLeftDown,
+    MouseRightDown,
+    MouseMiddleDown,
+    MouseLeftUp,
+    MouseRightUp,
+    MouseMiddleUp,
     MouseWheel,
 };
 
@@ -26,10 +32,11 @@ struct WindowEvent
         const wchar_t *path;
         struct
         {
+            POINT client_point;
             short scroll_amount;
             bool should_resize_font;
-            POINT client_point;
         };
+        POINTS cursor_pos;
     };
 };
 

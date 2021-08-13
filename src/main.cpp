@@ -240,78 +240,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             }
             context->cached_cursor_grid_pos = grid_pos;
         }
-    }
         return 0;
-    case WM_LBUTTONDOWN:
-    case WM_RBUTTONDOWN:
-    case WM_MBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_RBUTTONUP:
-    case WM_MBUTTONUP:
-    {
-        POINTS cursor_pos = MAKEPOINTS(lparam);
-        auto [row, col] =
-            context->renderer->CursorToGridPoint(cursor_pos.x, cursor_pos.y);
-        if (msg == WM_LBUTTONDOWN)
-        {
-            context->nvim->SendMouseInput(MouseButton::Left, MouseAction::Press,
-                                          row, col);
-        }
-        else if (msg == WM_MBUTTONDOWN)
-        {
-            context->nvim->SendMouseInput(MouseButton::Middle,
-                                          MouseAction::Press, row, col);
-        }
-        else if (msg == WM_RBUTTONDOWN)
-        {
-            context->nvim->SendMouseInput(MouseButton::Right,
-                                          MouseAction::Press, row, col);
-        }
-        else if (msg == WM_LBUTTONUP)
-        {
-            context->nvim->SendMouseInput(MouseButton::Left,
-                                          MouseAction::Release, row, col);
-        }
-        else if (msg == WM_MBUTTONUP)
-        {
-            context->nvim->SendMouseInput(MouseButton::Middle,
-                                          MouseAction::Release, row, col);
-        }
-        else if (msg == WM_RBUTTONUP)
-        {
-            context->nvim->SendMouseInput(MouseButton::Right,
-                                          MouseAction::Release, row, col);
-        }
     }
-        return 0;
-    case WM_XBUTTONDOWN:
-    {
-        int button = GET_XBUTTON_WPARAM(wparam);
-        if (button == XBUTTON1 && !context->xbuttons[0])
-        {
-            context->nvim->SendInput("<C-o>");
-            context->xbuttons[0] = true;
-        }
-        else if (button == XBUTTON2 && !context->xbuttons[1])
-        {
-            context->nvim->SendInput("<C-i>");
-            context->xbuttons[1] = true;
-        }
-    }
-        return 0;
-    case WM_XBUTTONUP:
-    {
-        int button = GET_XBUTTON_WPARAM(wparam);
-        if (button == XBUTTON1)
-        {
-            context->xbuttons[0] = false;
-        }
-        else if (button == XBUTTON2)
-        {
-            context->xbuttons[1] = false;
-        }
-    }
-        return 0;
     }
 
     return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -341,6 +271,57 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
             case WindowEventTypes::DpiChanged:
                 renderer.SetDpiScale(event.dpi);
                 break;
+
+            case WindowEventTypes::MouseLeftDown:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                nvim.SendMouseInput(MouseButton::Left, MouseAction::Press, row,
+                                    col);
+                break;
+            }
+            case WindowEventTypes::MouseLeftUp:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                nvim.SendMouseInput(MouseButton::Left, MouseAction::Release,
+                                    row, col);
+                break;
+            }
+
+            case WindowEventTypes::MouseRightDown:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                nvim.SendMouseInput(MouseButton::Right, MouseAction::Press, row,
+                                    col);
+                break;
+            }
+            case WindowEventTypes::MouseRightUp:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                nvim.SendMouseInput(MouseButton::Right, MouseAction::Release,
+                                    row, col);
+                break;
+            }
+
+            case WindowEventTypes::MouseMiddleDown:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                nvim.SendMouseInput(MouseButton::Middle, MouseAction::Press,
+                                    row, col);
+                break;
+            }
+            case WindowEventTypes::MouseMiddleUp:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                nvim.SendMouseInput(MouseButton::Middle, MouseAction::Release,
+                                    row, col);
+                break;
+            }
 
             case WindowEventTypes::MouseWheel:
             {

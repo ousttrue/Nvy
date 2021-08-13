@@ -138,6 +138,77 @@ LRESULT CALLBACK Win32Window::Proc(HWND hwnd, UINT msg, WPARAM wparam,
         return 0;
     }
 
+    case WM_LBUTTONDOWN:
+        RaiseEvent({
+            .type = WindowEventTypes::MouseLeftDown,
+            .cursor_pos = MAKEPOINTS(lparam),
+        });
+        return 0;
+
+    case WM_RBUTTONDOWN:
+        RaiseEvent({
+            .type = WindowEventTypes::MouseRightDown,
+            .cursor_pos = MAKEPOINTS(lparam),
+        });
+        return 0;
+
+    case WM_MBUTTONDOWN:
+        RaiseEvent({
+            .type = WindowEventTypes::MouseMiddleDown,
+            .cursor_pos = MAKEPOINTS(lparam),
+        });
+        return 0;
+
+    case WM_LBUTTONUP:
+        RaiseEvent({
+            .type = WindowEventTypes::MouseLeftUp,
+            .cursor_pos = MAKEPOINTS(lparam),
+        });
+        return 0;
+
+    case WM_RBUTTONUP:
+        RaiseEvent({
+            .type = WindowEventTypes::MouseRightUp,
+            .cursor_pos = MAKEPOINTS(lparam),
+        });
+        return 0;
+
+    case WM_MBUTTONUP:
+        RaiseEvent({
+            .type = WindowEventTypes::MouseMiddleUp,
+            .cursor_pos = MAKEPOINTS(lparam),
+        });
+        return 0;
+
+    case WM_XBUTTONDOWN:
+    {
+        int button = GET_XBUTTON_WPARAM(wparam);
+        // if (button == XBUTTON1 && !context->xbuttons[0])
+        // {
+        //     context->nvim->SendInput("<C-o>");
+        //     context->xbuttons[0] = true;
+        // }
+        // else if (button == XBUTTON2 && !context->xbuttons[1])
+        // {
+        //     context->nvim->SendInput("<C-i>");
+        //     context->xbuttons[1] = true;
+        // }
+        return 0;
+    }
+    case WM_XBUTTONUP:
+    {
+        int button = GET_XBUTTON_WPARAM(wparam);
+        // if (button == XBUTTON1)
+        // {
+        //     context->xbuttons[0] = false;
+        // }
+        // else if (button == XBUTTON2)
+        // {
+        //     context->xbuttons[1] = false;
+        // }
+        return 0;
+    }
+
     case WM_MOUSEWHEEL:
     {
         bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) != 0;
@@ -154,9 +225,9 @@ LRESULT CALLBACK Win32Window::Proc(HWND hwnd, UINT msg, WPARAM wparam,
 
         RaiseEvent({
             .type = WindowEventTypes::MouseWheel,
+            .client_point = client_point,
             .scroll_amount = scroll_amount,
             .should_resize_font = should_resize_font,
-            .client_point = client_point,
         });
         return 0;
     }

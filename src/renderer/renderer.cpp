@@ -593,6 +593,8 @@ void Renderer::InitializeWindowDependentResources()
             // not resized. use same bitmap
             return;
         }
+
+        _d2d_target_bitmap = nullptr;
         HRESULT hr =
             this->_swapchain->Resize(_pixel_size.width, _pixel_size.height);
         if (hr == DXGI_ERROR_DEVICE_REMOVED)

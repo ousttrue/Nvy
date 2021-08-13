@@ -1,7 +1,7 @@
 #include "renderer.h"
 #include "grid.h"
+#include "dx_helper.h"
 #include <assert.h>
-#include <common/dx_helper.h>
 #include <d3d11_4.h>
 #include <d2d1_3.h>
 #include <tuple>

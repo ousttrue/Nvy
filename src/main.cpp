@@ -1,9 +1,9 @@
-#include "nvim/nvim.h"
-#include "renderer/grid.h"
-#include "renderer/renderer.h"
-#include "common/mpack_helper.h"
-#include "common/vec.h"
-#include "common/window_messages.h"
+#include "nvim.h"
+#include "grid.h"
+#include "renderer.h"
+#include "mpack_helper.h"
+#include "vec.h"
+#include "window_messages.h"
 #include "third_party/mpack/mpack.h"
 #include <dwmapi.h>
 #include <shellscalingapi.h>

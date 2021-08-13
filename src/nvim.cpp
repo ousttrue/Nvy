@@ -1,7 +1,7 @@
 #include "nvim.h"
-#include "common/mpack_helper.h"
+#include "mpack_helper.h"
 #include "third_party/mpack/mpack.h"
-#include "common/window_messages.h"
+#include "window_messages.h"
 
 constexpr int Megabytes(int n)
 {
@@ -32,7 +32,7 @@ class NvimImpl
     PROCESS_INFORMATION process_info = {0};
 
     int64_t next_msg_id = 0;
-    Vec<NvimRequest> msg_id_to_method;
+    std::vector<NvimRequest> msg_id_to_method;
 
 public:
     static DWORD WINAPI NvimMessageHandler(LPVOID param)

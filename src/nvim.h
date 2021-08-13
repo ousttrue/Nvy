@@ -1,7 +1,6 @@
 #pragma once
 #include <stdint.h>
 #include <Windows.h>
-#include <common/vec.h>
 #include <vector>
 
 enum NvimRequest : uint8_t

@@ -213,7 +213,7 @@ struct Context
         int grid_cols = MPackIntFromArray(grid_resize_params, 1);
         int grid_rows = MPackIntFromArray(grid_resize_params, 2);
 
-        _grid.Resize(grid_rows, grid_cols);
+        _grid.Resize({grid_rows, grid_cols});
     }
 
     void UpdateCursorPos(mpack_node_t cursor_goto)

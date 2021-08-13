@@ -1,6 +1,7 @@
 #pragma once
 #include <wrl/client.h>
 #include <memory>
+#include "grid.h"
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
@@ -10,11 +11,6 @@ struct GridPoint
 {
     int row;
     int col;
-};
-struct GridSize
-{
-    int rows;
-    int cols;
 };
 struct PixelSize
 {

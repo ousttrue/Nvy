@@ -9,12 +9,11 @@ Grid::~Grid()
 {
 }
 
-void Grid::Resize(int rows, int cols)
+void Grid::Resize(const GridSize &size)
 {
-    if (rows != _grid_rows || cols != _grid_cols)
+    if (size != _size)
     {
-        _grid_cols = cols;
-        _grid_rows = rows;
+        _size = size;
 
         auto count = Count();
         _grid_chars.resize(count);
@@ -28,24 +27,24 @@ void Grid::Resize(int rows, int cols)
 
 void Grid::LineCopy(int left, int right, int src_row, int dst_row)
 {
-    memcpy(&this->_grid_chars[dst_row * this->_grid_cols + left],
-           &this->_grid_chars[src_row * this->_grid_cols + left],
+    memcpy(&this->_grid_chars[dst_row * this->_size.cols + left],
+           &this->_grid_chars[src_row * this->_size.cols + left],
            (right - left) * sizeof(wchar_t));
 
-    memcpy(&this->_grid_cell_properties[dst_row * this->_grid_cols + left],
-           &this->_grid_cell_properties[src_row * this->_grid_cols + left],
+    memcpy(&this->_grid_cell_properties[dst_row * this->_size.cols + left],
+           &this->_grid_cell_properties[src_row * this->_size.cols + left],
            (right - left) * sizeof(CellProperty));
 }
 
 void Grid::Clear()
 {
     // Initialize all grid character to a space.
-    for (int i = 0; i < this->_grid_cols * this->_grid_rows; ++i)
+    for (int i = 0; i < this->_size.cols * this->_size.rows; ++i)
     {
         this->_grid_chars[i] = L' ';
     }
     memset(this->_grid_cell_properties.data(), 0,
-           this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
+           this->_size.cols * this->_size.rows * sizeof(CellProperty));
 }
 
 uint32_t Grid::CreateForegroundColor(HighlightAttributes *hl_attribs)

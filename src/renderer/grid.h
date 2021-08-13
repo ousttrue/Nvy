@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include <functional>
+#include <list>
 
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr uint32_t DEFAULT_COLOR = 0x46464646;
@@ -49,10 +51,21 @@ struct HighlightAttributes
     uint16_t flags;
 };
 
+struct GridSize
+{
+    int rows;
+    int cols;
+
+    bool operator==(const GridSize &rhs) const
+    {
+        return rows == rhs.rows && cols == rhs.cols;
+    }
+};
+using GridSizeChanged = std::function<void(const GridSize &)>;
+
 class Grid
 {
-    int _grid_rows = 0;
-    int _grid_cols = 0;
+    GridSize _size = {};
     std::vector<wchar_t> _grid_chars;
     std::vector<CellProperty> _grid_cell_properties;
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
@@ -67,15 +80,15 @@ public:
 
     int Rows() const
     {
-        return _grid_rows;
+        return _size.rows;
     }
     int Cols() const
     {
-        return _grid_cols;
+        return _size.cols;
     }
     int Count() const
     {
-        return _grid_cols * _grid_rows;
+        return _size.cols * _size.rows;
     }
     wchar_t *Chars()
     {
@@ -85,7 +98,7 @@ public:
     {
         return _grid_cell_properties.data();
     }
-    void Resize(int rows, int cols);
+    void Resize(const GridSize &size);
     void LineCopy(int left, int right, int src_row, int dst_row);
     void Clear();
 
@@ -119,7 +132,7 @@ public:
     }
     int CursorOffset() const
     {
-        return _cursor.row * _grid_cols + _cursor.col;
+        return _cursor.row * _size.cols + _cursor.col;
     }
     int CursorModeHighlightAttribute()
     {

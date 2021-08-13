@@ -100,7 +100,15 @@ public:
     {
         return _grid_chars.data();
     }
+    const wchar_t *Chars() const
+    {
+        return _grid_chars.data();
+    }
     CellProperty *Props()
+    {
+        return _grid_cell_properties.data();
+    }
+    const CellProperty *Props() const
     {
         return _grid_cell_properties.data();
     }
@@ -157,7 +165,11 @@ public:
     {
         return this->_hl_attribs.data();
     }
-    uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);
-    uint32_t CreateBackgroundColor(HighlightAttributes *hl_attribs);
-    uint32_t CreateSpecialColor(HighlightAttributes *hl_attribs);
+    const HighlightAttributes *GetHighlightAttributes() const
+    {
+        return this->_hl_attribs.data();
+    }
+    uint32_t CreateForegroundColor(const HighlightAttributes *hl_attribs);
+    uint32_t CreateBackgroundColor(const HighlightAttributes *hl_attribs);
+    uint32_t CreateSpecialColor(const HighlightAttributes *hl_attribs);
 };

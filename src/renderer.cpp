@@ -370,7 +370,7 @@ public:
             DWRITE_WORD_WRAPPING_NO_WRAP));
     }
 
-    float GetTextWidth(wchar_t *text, uint32_t length)
+    float GetTextWidth(const wchar_t *text, uint32_t length)
     {
         // Create dummy text format to hit test the width of the font
         ComPtr<IDWriteTextLayout> test_text_layout;
@@ -386,7 +386,7 @@ public:
     }
 
     ComPtr<IDWriteTextLayout1> GetTextLayout(const D2D1_RECT_F &rect,
-                                             wchar_t *text, uint32_t length)
+                                             const wchar_t *text, uint32_t length)
     {
         ComPtr<IDWriteTextLayout> temp_text_layout;
         WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
@@ -667,7 +667,7 @@ void Renderer::Resize(uint32_t width, uint32_t height)
     _pixel_size.height = height;
 }
 
-void Renderer::ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
+void Renderer::ApplyHighlightAttributes(const HighlightAttributes *hl_attribs,
                                         IDWriteTextLayout *text_layout,
                                         int start, int end)
 {
@@ -701,9 +701,9 @@ void Renderer::ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
 }
 
 void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
-                                  HighlightAttributes *hl_attribs)
+                                  const HighlightAttributes *hl_attribs)
 {
-    uint32_t color = _grid->CreateBackgroundColor(hl_attribs);
+    auto color = _grid->CreateBackgroundColor(hl_attribs);
     _device->_d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
     _device->_d2d_context->FillRectangle(
         rect, _device->_d2d_background_rect_brush.Get());
@@ -749,9 +749,9 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
     _device->_d2d_context->PopAxisAlignedClip();
 }
 
-void Renderer::DrawGridLine(int row)
+void Renderer::DrawGridLine(const Grid* grid, int row)
 {
-    auto cols = _grid->Cols();
+    auto cols = grid->Cols();
     int base = row * cols;
 
     D2D1_RECT_F rect{.left = 0.0f,
@@ -761,17 +761,17 @@ void Renderer::DrawGridLine(int row)
                          (row * _dwrite->_font_height) + _dwrite->_font_height};
 
     auto text_layout =
-        _dwrite->GetTextLayout(rect, &_grid->Chars()[base], cols);
+        _dwrite->GetTextLayout(rect, &grid->Chars()[base], cols);
 
-    uint16_t hl_attrib_id = _grid->Props()[base].hl_attrib_id;
+    uint16_t hl_attrib_id = grid->Props()[base].hl_attrib_id;
     int col_offset = 0;
     for (int i = 0; i < cols; ++i)
     {
         // Add spacing for wide chars
-        if (_grid->Props()[base + i].is_wide_char)
+        if (grid->Props()[base + i].is_wide_char)
         {
             float char_width =
-                _dwrite->GetTextWidth(&_grid->Chars()[base + i], 2);
+                _dwrite->GetTextWidth(&grid->Chars()[base + i], 2);
             DWRITE_TEXT_RANGE range{.startPosition = static_cast<uint32_t>(i),
                                     .length = 1};
             text_layout->SetCharacterSpacing(
@@ -781,10 +781,10 @@ void Renderer::DrawGridLine(int row)
         // Add spacing for unicode chars. These characters are still single char
         // width, but some of them by default will take up a bit more or less,
         // leading to issues. So we realign them here.
-        else if (_grid->Chars()[base + i] > 0xFF)
+        else if (grid->Chars()[base + i] > 0xFF)
         {
             float char_width =
-                _dwrite->GetTextWidth(&_grid->Chars()[base + i], 1);
+                _dwrite->GetTextWidth(&grid->Chars()[base + i], 1);
             if (abs(char_width - _dwrite->_font_width) > 0.01f)
             {
                 DWRITE_TEXT_RANGE range{
@@ -796,7 +796,7 @@ void Renderer::DrawGridLine(int row)
 
         // Check if the attributes change,
         // if so draw until this point and continue with the new attributes
-        if (_grid->Props()[base + i].hl_attrib_id != hl_attrib_id)
+        if (grid->Props()[base + i].hl_attrib_id != hl_attrib_id)
         {
             D2D1_RECT_F bg_rect{.left = col_offset * _dwrite->_font_width,
                                 .top = row * _dwrite->_font_height,
@@ -806,12 +806,12 @@ void Renderer::DrawGridLine(int row)
                                 .bottom = (row * _dwrite->_font_height) +
                                           _dwrite->_font_height};
             this->DrawBackgroundRect(
-                bg_rect, &_grid->GetHighlightAttributes()[hl_attrib_id]);
+                bg_rect, &grid->GetHighlightAttributes()[hl_attrib_id]);
             this->ApplyHighlightAttributes(
-                &_grid->GetHighlightAttributes()[hl_attrib_id],
+                &grid->GetHighlightAttributes()[hl_attrib_id],
                 text_layout.Get(), col_offset, i);
 
-            hl_attrib_id = _grid->Props()[base + i].hl_attrib_id;
+            hl_attrib_id = grid->Props()[base + i].hl_attrib_id;
             col_offset = i;
         }
     }
@@ -822,9 +822,9 @@ void Renderer::DrawGridLine(int row)
     D2D1_RECT_F last_rect = rect;
     last_rect.left = col_offset * _dwrite->_font_width;
     this->DrawBackgroundRect(last_rect,
-                             &_grid->GetHighlightAttributes()[hl_attrib_id]);
+                             &grid->GetHighlightAttributes()[hl_attrib_id]);
     this->ApplyHighlightAttributes(
-        &_grid->GetHighlightAttributes()[hl_attrib_id], text_layout.Get(),
+        &grid->GetHighlightAttributes()[hl_attrib_id], text_layout.Get(),
         col_offset, cols);
 
     _device->_d2d_context->PushAxisAlignedClip(rect,

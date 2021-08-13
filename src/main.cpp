@@ -166,7 +166,7 @@ struct Context
                 // redraw the line to get rid of the cursor
                 if (_grid.CursorRow() < _grid.Rows())
                 {
-                    renderer->DrawGridLine(_grid.CursorRow());
+                    renderer->DrawGridLine(&_grid, _grid.CursorRow());
                 }
                 UpdateCursorPos(redraw_command_arr);
             }
@@ -179,7 +179,7 @@ struct Context
                 // Redraw cursor if its inside the bounds
                 if (_grid.CursorRow() < _grid.Rows())
                 {
-                    renderer->DrawGridLine(_grid.CursorRow());
+                    renderer->DrawGridLine(&_grid, _grid.CursorRow());
                 }
                 UpdateCursorMode(redraw_command_arr);
             }
@@ -189,7 +189,7 @@ struct Context
                 // Hide cursor while UI is busy
                 if (_grid.CursorRow() < _grid.Rows())
                 {
-                    renderer->DrawGridLine(_grid.CursorRow());
+                    renderer->DrawGridLine(&_grid, _grid.CursorRow());
                 }
             }
             else if (MPackMatchString(redraw_command_name, "busy_stop"))
@@ -475,7 +475,7 @@ struct Context
                 col_offset += wstrlen_with_repetitions;
             }
 
-            renderer->DrawGridLine(row);
+            renderer->DrawGridLine(&_grid, row);
         }
     }
 
@@ -527,7 +527,7 @@ struct Context
             // I can't seem to make work with the FLIP_SEQUENTIAL swapchain
             // model. Thus we fall back to drawing the appropriate scrolled grid
             // lines
-            renderer->DrawGridLine(target_row);
+            renderer->DrawGridLine(&_grid, target_row);
         }
 
         // Redraw the line which the cursor has moved to, as it is no
@@ -535,7 +535,7 @@ struct Context
         int cursor_row = _grid.CursorRow() - rows;
         if (cursor_row >= 0 && cursor_row < _grid.Rows())
         {
-            renderer->DrawGridLine(cursor_row);
+            renderer->DrawGridLine(&_grid, cursor_row);
         }
     }
 };

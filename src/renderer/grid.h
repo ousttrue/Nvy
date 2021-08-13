@@ -2,6 +2,8 @@
 #include <vector>
 
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
+constexpr uint32_t DEFAULT_COLOR = 0x46464646;
+constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
 
 struct CellProperty
 {
@@ -29,6 +31,24 @@ struct Cursor
     int col;
 };
 
+enum HighlightAttributeFlags : uint16_t
+{
+    HL_ATTRIB_REVERSE = 1 << 0,
+    HL_ATTRIB_ITALIC = 1 << 1,
+    HL_ATTRIB_BOLD = 1 << 2,
+    HL_ATTRIB_STRIKETHROUGH = 1 << 3,
+    HL_ATTRIB_UNDERLINE = 1 << 4,
+    HL_ATTRIB_UNDERCURL = 1 << 5
+};
+
+struct HighlightAttributes
+{
+    uint32_t foreground;
+    uint32_t background;
+    uint32_t special;
+    uint16_t flags;
+};
+
 class GridImpl
 {
     int _grid_rows = 0;
@@ -37,8 +57,11 @@ class GridImpl
     std::vector<CellProperty> _grid_cell_properties;
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Cursor _cursor = {0};
+    std::vector<HighlightAttributes> _hl_attribs;
 
 public:
+    GridImpl();
+
     int Rows() const
     {
         return _grid_rows;
@@ -107,4 +130,12 @@ public:
     {
         this->_cursor.mode_info = &this->_cursor_mode_infos[index];
     }
+
+    HighlightAttributes *GetHighlightAttributes()
+    {
+        return this->_hl_attribs.data();
+    }
+    uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);
+    uint32_t CreateBackgroundColor(HighlightAttributes *hl_attribs);
+    uint32_t CreateSpecialColor(HighlightAttributes *hl_attribs);
 };

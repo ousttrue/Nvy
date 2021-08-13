@@ -638,8 +638,6 @@ Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
       _grid(new GridImpl)
 {
     this->_hwnd = hwnd;
-    this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
-
     this->HandleDeviceLost();
 }
 
@@ -672,13 +670,13 @@ void Renderer::UpdateDefaultColors(mpack_node_t default_colors)
         mpack_node_t color_arr = mpack_node_array_at(default_colors, i);
 
         // Default colors occupy the first index of the highlight attribs array
-        this->_hl_attribs[0].foreground = static_cast<uint32_t>(
+        _grid->GetHighlightAttributes()[0].foreground = static_cast<uint32_t>(
             mpack_node_array_at(color_arr, 0).data->value.u);
-        this->_hl_attribs[0].background = static_cast<uint32_t>(
+        _grid->GetHighlightAttributes()[0].background = static_cast<uint32_t>(
             mpack_node_array_at(color_arr, 1).data->value.u);
-        this->_hl_attribs[0].special = static_cast<uint32_t>(
+        _grid->GetHighlightAttributes()[0].special = static_cast<uint32_t>(
             mpack_node_array_at(color_arr, 2).data->value.u);
-        this->_hl_attribs[0].flags = 0;
+        _grid->GetHighlightAttributes()[0].flags = 0;
     }
 }
 
@@ -708,9 +706,12 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
                 *color = DEFAULT_COLOR;
             }
         };
-        SetColor("foreground", &this->_hl_attribs[attrib_index].foreground);
-        SetColor("background", &this->_hl_attribs[attrib_index].background);
-        SetColor("special", &this->_hl_attribs[attrib_index].special);
+        SetColor("foreground",
+                 &_grid->GetHighlightAttributes()[attrib_index].foreground);
+        SetColor("background",
+                 &_grid->GetHighlightAttributes()[attrib_index].background);
+        SetColor("special",
+                 &_grid->GetHighlightAttributes()[attrib_index].special);
 
         const auto SetFlag =
             [&](const char *flag_name, HighlightAttributeFlags flag)
@@ -721,11 +722,12 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
             {
                 if (flag_node.data->value.b)
                 {
-                    this->_hl_attribs[attrib_index].flags |= flag;
+                    _grid->GetHighlightAttributes()[attrib_index].flags |= flag;
                 }
                 else
                 {
-                    this->_hl_attribs[attrib_index].flags &= ~flag;
+                    _grid->GetHighlightAttributes()[attrib_index].flags &=
+                        ~flag;
                 }
             }
         };
@@ -738,51 +740,13 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
     }
 }
 
-uint32_t Renderer::CreateForegroundColor(HighlightAttributes *hl_attribs)
-{
-    if (hl_attribs->flags & HL_ATTRIB_REVERSE)
-    {
-        return hl_attribs->background == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].background
-                   : hl_attribs->background;
-    }
-    else
-    {
-        return hl_attribs->foreground == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].foreground
-                   : hl_attribs->foreground;
-    }
-}
-
-uint32_t Renderer::CreateBackgroundColor(HighlightAttributes *hl_attribs)
-{
-    if (hl_attribs->flags & HL_ATTRIB_REVERSE)
-    {
-        return hl_attribs->foreground == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].foreground
-                   : hl_attribs->foreground;
-    }
-    else
-    {
-        return hl_attribs->background == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].background
-                   : hl_attribs->background;
-    }
-}
-
-uint32_t Renderer::CreateSpecialColor(HighlightAttributes *hl_attribs)
-{
-    return hl_attribs->special == DEFAULT_COLOR ? this->_hl_attribs[0].special
-                                                : hl_attribs->special;
-}
-
 void Renderer::ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
                                         IDWriteTextLayout *text_layout,
                                         int start, int end)
 {
     ComPtr<GlyphDrawingEffect> drawing_effect;
-    GlyphDrawingEffect::Create(this->CreateForegroundColor(hl_attribs),
-                               this->CreateSpecialColor(hl_attribs),
+    GlyphDrawingEffect::Create(_grid->CreateForegroundColor(hl_attribs),
+                               _grid->CreateSpecialColor(hl_attribs),
                                &drawing_effect);
     DWRITE_TEXT_RANGE range{.startPosition = static_cast<uint32_t>(start),
                             .length = static_cast<uint32_t>(end - start)};
@@ -812,7 +776,7 @@ void Renderer::ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
 void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
                                   HighlightAttributes *hl_attribs)
 {
-    uint32_t color = this->CreateBackgroundColor(hl_attribs);
+    uint32_t color = _grid->CreateBackgroundColor(hl_attribs);
     _device->_d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
     _device->_d2d_context->FillRectangle(
         rect, _device->_d2d_background_rect_brush.Get());
@@ -915,9 +879,11 @@ void Renderer::DrawGridLine(int row)
                                     _dwrite->_font_width * (i - col_offset),
                                 .bottom = (row * _dwrite->_font_height) +
                                           _dwrite->_font_height};
-            this->DrawBackgroundRect(bg_rect, &this->_hl_attribs[hl_attrib_id]);
-            this->ApplyHighlightAttributes(&this->_hl_attribs[hl_attrib_id],
-                                           text_layout.Get(), col_offset, i);
+            this->DrawBackgroundRect(
+                bg_rect, &_grid->GetHighlightAttributes()[hl_attrib_id]);
+            this->ApplyHighlightAttributes(
+                &_grid->GetHighlightAttributes()[hl_attrib_id],
+                text_layout.Get(), col_offset, i);
 
             hl_attrib_id = _grid->Props()[base + i].hl_attrib_id;
             col_offset = i;
@@ -929,9 +895,11 @@ void Renderer::DrawGridLine(int row)
     // hl_attrib
     D2D1_RECT_F last_rect = rect;
     last_rect.left = col_offset * _dwrite->_font_width;
-    this->DrawBackgroundRect(last_rect, &this->_hl_attribs[hl_attrib_id]);
-    this->ApplyHighlightAttributes(&this->_hl_attribs[hl_attrib_id],
-                                   text_layout.Get(), col_offset, cols);
+    this->DrawBackgroundRect(last_rect,
+                             &_grid->GetHighlightAttributes()[hl_attrib_id]);
+    this->ApplyHighlightAttributes(
+        &_grid->GetHighlightAttributes()[hl_attrib_id], text_layout.Get(),
+        col_offset, cols);
 
     _device->_d2d_context->PushAxisAlignedClip(rect,
                                                D2D1_ANTIALIAS_MODE_ALIASED);
@@ -1047,7 +1015,7 @@ void Renderer::DrawCursor()
     }
 
     HighlightAttributes cursor_hl_attribs =
-        this->_hl_attribs[_grid->CursorModeHighlightAttribute()];
+        _grid->GetHighlightAttributes()[_grid->CursorModeHighlightAttribute()];
     if (_grid->CursorModeHighlightAttribute() == 0)
     {
         cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
@@ -1202,7 +1170,8 @@ void Renderer::DrawBorderRectangles()
             .top = 0.0f,
             .right = static_cast<float>(this->_pixel_size.width),
             .bottom = static_cast<float>(this->_pixel_size.height)};
-        this->DrawBackgroundRect(vertical_rect, &this->_hl_attribs[0]);
+        this->DrawBackgroundRect(vertical_rect,
+                                 &_grid->GetHighlightAttributes()[0]);
     }
 
     if (top_border != static_cast<float>(this->_pixel_size.height))
@@ -1212,7 +1181,8 @@ void Renderer::DrawBorderRectangles()
             .top = top_border,
             .right = static_cast<float>(this->_pixel_size.width),
             .bottom = static_cast<float>(this->_pixel_size.height)};
-        this->DrawBackgroundRect(horizontal_rect, &this->_hl_attribs[0]);
+        this->DrawBackgroundRect(horizontal_rect,
+                                 &_grid->GetHighlightAttributes()[0]);
     }
 }
 
@@ -1275,7 +1245,7 @@ void Renderer::ClearGrid()
                      .top = 0.0f,
                      .right = _grid->Cols() * _dwrite->_font_width,
                      .bottom = _grid->Rows() * _dwrite->_font_height};
-    this->DrawBackgroundRect(rect, &this->_hl_attribs[0]);
+    this->DrawBackgroundRect(rect, &_grid->GetHighlightAttributes()[0]);
 }
 
 void Renderer::StartDraw()
@@ -1468,7 +1438,7 @@ HRESULT Renderer::DrawGlyphRun(
     else
     {
         _device->_drawing_effect_brush->SetColor(
-            D2D1::ColorF(this->_hl_attribs[0].foreground));
+            D2D1::ColorF(_grid->GetHighlightAttributes()[0].foreground));
     }
 
     DWRITE_GLYPH_IMAGE_FORMATS supported_formats =
@@ -1587,7 +1557,7 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
     else
     {
         _device->_temp_brush->SetColor(
-            D2D1::ColorF(this->_hl_attribs[0].special));
+            D2D1::ColorF(_grid->GetHighlightAttributes()[0].special));
     }
 
     D2D1_RECT_F rect =

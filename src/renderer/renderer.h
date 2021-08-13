@@ -5,23 +5,6 @@
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
 
-constexpr uint32_t DEFAULT_COLOR = 0x46464646;
-enum HighlightAttributeFlags : uint16_t
-{
-    HL_ATTRIB_REVERSE = 1 << 0,
-    HL_ATTRIB_ITALIC = 1 << 1,
-    HL_ATTRIB_BOLD = 1 << 2,
-    HL_ATTRIB_STRIKETHROUGH = 1 << 3,
-    HL_ATTRIB_UNDERLINE = 1 << 4,
-    HL_ATTRIB_UNDERCURL = 1 << 5
-};
-struct HighlightAttributes
-{
-    uint32_t foreground;
-    uint32_t background;
-    uint32_t special;
-    uint16_t flags;
-};
 
 struct GridPoint
 {
@@ -39,7 +22,6 @@ struct PixelSize
     int height;
 };
 
-constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
 constexpr int MAX_FONT_LENGTH = 128;
 constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
@@ -50,8 +32,6 @@ class Renderer
     std::unique_ptr<class DWriteImpl> _dwrite;
     std::unique_ptr<class GridImpl> _grid;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
-
-    Vec<HighlightAttributes> _hl_attribs;
 
     D2D1_SIZE_U _pixel_size = {0};
 
@@ -90,10 +70,7 @@ private:
     void HandleDeviceLost();
     void UpdateDefaultColors(mpack_node_t default_colors);
     void UpdateHighlightAttributes(mpack_node_t highlight_attribs);
-    uint32_t CreateForegroundColor(HighlightAttributes *hl_attribs);
-    uint32_t CreateBackgroundColor(HighlightAttributes *hl_attribs);
-    uint32_t CreateSpecialColor(HighlightAttributes *hl_attribs);
-    void ApplyHighlightAttributes(HighlightAttributes *hl_attribs,
+    void ApplyHighlightAttributes(struct HighlightAttributes *hl_attribs,
                                   IDWriteTextLayout *text_layout, int start,
                                   int end);
     D2D1_RECT_F GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect);

@@ -1,5 +1,10 @@
 #include "grid.h"
 
+GridImpl::GridImpl()
+{
+    this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
+}
+
 void GridImpl::Resize(int rows, int cols)
 {
     if (rows != _grid_rows || cols != _grid_cols)
@@ -37,4 +42,42 @@ void GridImpl::Clear()
     }
     memset(this->_grid_cell_properties.data(), 0,
            this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
+}
+
+uint32_t GridImpl::CreateForegroundColor(HighlightAttributes *hl_attribs)
+{
+    if (hl_attribs->flags & HL_ATTRIB_REVERSE)
+    {
+        return hl_attribs->background == DEFAULT_COLOR
+                   ? this->_hl_attribs[0].background
+                   : hl_attribs->background;
+    }
+    else
+    {
+        return hl_attribs->foreground == DEFAULT_COLOR
+                   ? this->_hl_attribs[0].foreground
+                   : hl_attribs->foreground;
+    }
+}
+
+uint32_t GridImpl::CreateBackgroundColor(HighlightAttributes *hl_attribs)
+{
+    if (hl_attribs->flags & HL_ATTRIB_REVERSE)
+    {
+        return hl_attribs->foreground == DEFAULT_COLOR
+                   ? this->_hl_attribs[0].foreground
+                   : hl_attribs->foreground;
+    }
+    else
+    {
+        return hl_attribs->background == DEFAULT_COLOR
+                   ? this->_hl_attribs[0].background
+                   : hl_attribs->background;
+    }
+}
+
+uint32_t GridImpl::CreateSpecialColor(HighlightAttributes *hl_attribs)
+{
+    return hl_attribs->special == DEFAULT_COLOR ? this->_hl_attribs[0].special
+                                                : hl_attribs->special;
 }

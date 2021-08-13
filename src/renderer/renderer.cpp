@@ -1,73 +1,8 @@
 #include "renderer.h"
+#include "grid.h"
 #include <tuple>
 #include <vector>
 using namespace Microsoft::WRL;
-
-class GridImpl
-{
-    int _grid_rows = 0;
-    int _grid_cols = 0;
-    std::vector<wchar_t> _grid_chars;
-    std::vector<CellProperty> _grid_cell_properties;
-
-public:
-    int Rows() const
-    {
-        return this->_grid_rows;
-    }
-    int Cols() const
-    {
-        return this->_grid_cols;
-    }
-    int Count() const
-    {
-        return this->_grid_cols * this->_grid_rows;
-    }
-    wchar_t *Chars()
-    {
-        return this->_grid_chars.data();
-    }
-    CellProperty *Props()
-    {
-        return this->_grid_cell_properties.data();
-    }
-    void Resize(int rows, int cols)
-    {
-        if (rows != _grid_rows || cols != _grid_cols)
-        {
-            _grid_cols = cols;
-            _grid_rows = rows;
-
-            auto count = Count();
-            _grid_chars.resize(count);
-            // Initialize all grid character to a space. An empty
-            // grid cell is equivalent to a space in a text layout
-            std::fill(_grid_chars.begin(), _grid_chars.end(), L' ');
-
-            _grid_cell_properties.resize(count);
-        }
-    }
-    void LineCopy(int left, int right, int src_row, int dst_row)
-    {
-        memcpy(&this->_grid_chars[dst_row * this->_grid_cols + left],
-               &this->_grid_chars[src_row * this->_grid_cols + left],
-               (right - left) * sizeof(wchar_t));
-
-        memcpy(&this->_grid_cell_properties[dst_row * this->_grid_cols + left],
-               &this->_grid_cell_properties[src_row * this->_grid_cols + left],
-               (right - left) * sizeof(CellProperty));
-    }
-    void Clear()
-    {
-        // Initialize all grid character to a space.
-        for (int i = 0; i < this->_grid_cols * this->_grid_rows; ++i)
-        {
-            this->_grid_chars[i] = L' ';
-        }
-        memset(this->_grid_cell_properties.data(), 0,
-               this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
-    }
-};
 
 struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect
     : public IUnknown

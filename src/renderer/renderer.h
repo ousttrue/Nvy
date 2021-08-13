@@ -59,12 +59,6 @@ struct Cursor
     int col;
 };
 
-struct CellProperty
-{
-    uint16_t hl_attrib_id;
-    bool is_wide_char;
-};
-
 constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr int MAX_FONT_LENGTH = 128;

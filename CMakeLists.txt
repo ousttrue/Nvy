@@ -21,6 +21,7 @@ set(Nvy_SOURCES
     "src/main.cpp"
     "src/nvim/nvim.cpp"
     "src/renderer/renderer.cpp"
+    "src/renderer/grid.cpp"
     "src/third_party/mpack/mpack.c"
 )
 
@@ -75,7 +76,7 @@ set_source_files_properties("src/third_party/mpack/mpack.c" PROPERTIES
 
 if(MSVC)
 	string(REGEX REPLACE "/GR" "/GR-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-	string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+	# string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 else()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions")
 endif()

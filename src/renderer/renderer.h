@@ -75,6 +75,7 @@ class Renderer
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
+    std::unique_ptr<class GridImpl> _grid;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
@@ -83,10 +84,6 @@ class Renderer
     Vec<HighlightAttributes> _hl_attribs;
 
     D2D1_SIZE_U _pixel_size = {0};
-    int _grid_rows = 0;
-    int _grid_cols = 0;
-    wchar_t *_grid_chars = nullptr;
-    CellProperty *_grid_cell_properties = nullptr;
 
     HWND _hwnd = nullptr;
     bool _draw_active = false;

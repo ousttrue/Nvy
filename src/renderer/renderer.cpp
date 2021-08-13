@@ -1,6 +1,73 @@
 #include "renderer.h"
 #include <tuple>
+#include <vector>
 using namespace Microsoft::WRL;
+
+class GridImpl
+{
+    int _grid_rows = 0;
+    int _grid_cols = 0;
+    std::vector<wchar_t> _grid_chars;
+    std::vector<CellProperty> _grid_cell_properties;
+
+public:
+    int Rows() const
+    {
+        return this->_grid_rows;
+    }
+    int Cols() const
+    {
+        return this->_grid_cols;
+    }
+    int Count() const
+    {
+        return this->_grid_cols * this->_grid_rows;
+    }
+    wchar_t *Chars()
+    {
+        return this->_grid_chars.data();
+    }
+    CellProperty *Props()
+    {
+        return this->_grid_cell_properties.data();
+    }
+    void Resize(int rows, int cols)
+    {
+        if (rows != _grid_rows || cols != _grid_cols)
+        {
+            _grid_cols = cols;
+            _grid_rows = rows;
+
+            auto count = Count();
+            _grid_chars.resize(count);
+            // Initialize all grid character to a space. An empty
+            // grid cell is equivalent to a space in a text layout
+            std::fill(_grid_chars.begin(), _grid_chars.end(), L' ');
+
+            _grid_cell_properties.resize(count);
+        }
+    }
+    void LineCopy(int left, int right, int src_row, int dst_row)
+    {
+        memcpy(&this->_grid_chars[dst_row * this->_grid_cols + left],
+               &this->_grid_chars[src_row * this->_grid_cols + left],
+               (right - left) * sizeof(wchar_t));
+
+        memcpy(&this->_grid_cell_properties[dst_row * this->_grid_cols + left],
+               &this->_grid_cell_properties[src_row * this->_grid_cols + left],
+               (right - left) * sizeof(CellProperty));
+    }
+    void Clear()
+    {
+        // Initialize all grid character to a space.
+        for (int i = 0; i < this->_grid_cols * this->_grid_rows; ++i)
+        {
+            this->_grid_chars[i] = L' ';
+        }
+        memset(this->_grid_cell_properties.data(), 0,
+               this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
+    }
+};
 
 struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect
     : public IUnknown
@@ -586,7 +653,7 @@ void Renderer::InitializeWindowDependentResources()
     {
         uint32_t w, h;
         std::tie(w, h) = this->_swapchain->GetSize();
-        if (_pixel_size.width == w &&_pixel_size.height == h)
+        if (_pixel_size.width == w && _pixel_size.height == h)
         {
             // not resized. use same bitmap
             return;
@@ -632,7 +699,8 @@ void Renderer::HandleDeviceLost()
 Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
                    float monitor_dpi)
     : _dwrite(
-          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi))
+          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
+      _grid(new GridImpl)
 {
     this->_hwnd = hwnd;
     this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
@@ -642,8 +710,6 @@ Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
 
 Renderer::~Renderer()
 {
-    free(this->_grid_chars);
-    free(this->_grid_cell_properties);
 }
 
 void Renderer::Attach()
@@ -694,7 +760,8 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
         mpack_node_t attrib_map =
             mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 1);
 
-        const auto SetColor = [&](const char *name, uint32_t *color) {
+        const auto SetColor = [&](const char *name, uint32_t *color)
+        {
             mpack_node_t color_node =
                 mpack_node_map_cstr_optional(attrib_map, name);
             if (!mpack_node_is_missing(color_node))
@@ -710,8 +777,9 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
         SetColor("background", &this->_hl_attribs[attrib_index].background);
         SetColor("special", &this->_hl_attribs[attrib_index].special);
 
-        const auto SetFlag = [&](const char *flag_name,
-                                 HighlightAttributeFlags flag) {
+        const auto SetFlag =
+            [&](const char *flag_name, HighlightAttributeFlags flag)
+        {
             mpack_node_t flag_node =
                 mpack_node_map_cstr_optional(attrib_map, flag_name);
             if (!mpack_node_is_missing(flag_node))
@@ -861,26 +929,27 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
 
 void Renderer::DrawGridLine(int row)
 {
-    int base = row * this->_grid_cols;
+    auto cols = _grid->Cols();
+    int base = row * cols;
 
     D2D1_RECT_F rect{.left = 0.0f,
                      .top = row * _dwrite->_font_height,
-                     .right = this->_grid_cols * _dwrite->_font_width,
+                     .right = cols * _dwrite->_font_width,
                      .bottom =
                          (row * _dwrite->_font_height) + _dwrite->_font_height};
 
-    auto text_layout = _dwrite->GetTextLayout(rect, &this->_grid_chars[base],
-                                              this->_grid_cols);
+    auto text_layout =
+        _dwrite->GetTextLayout(rect, &_grid->Chars()[base], cols);
 
-    uint16_t hl_attrib_id = this->_grid_cell_properties[base].hl_attrib_id;
+    uint16_t hl_attrib_id = _grid->Props()[base].hl_attrib_id;
     int col_offset = 0;
-    for (int i = 0; i < this->_grid_cols; ++i)
+    for (int i = 0; i < cols; ++i)
     {
         // Add spacing for wide chars
-        if (this->_grid_cell_properties[base + i].is_wide_char)
+        if (_grid->Props()[base + i].is_wide_char)
         {
             float char_width =
-                _dwrite->GetTextWidth(&this->_grid_chars[base + i], 2);
+                _dwrite->GetTextWidth(&_grid->Chars()[base + i], 2);
             DWRITE_TEXT_RANGE range{.startPosition = static_cast<uint32_t>(i),
                                     .length = 1};
             text_layout->SetCharacterSpacing(
@@ -890,10 +959,10 @@ void Renderer::DrawGridLine(int row)
         // Add spacing for unicode chars. These characters are still single char
         // width, but some of them by default will take up a bit more or less,
         // leading to issues. So we realign them here.
-        else if (this->_grid_chars[base + i] > 0xFF)
+        else if (_grid->Chars()[base + i] > 0xFF)
         {
             float char_width =
-                _dwrite->GetTextWidth(&this->_grid_chars[base + i], 1);
+                _dwrite->GetTextWidth(&_grid->Chars()[base + i], 1);
             if (abs(char_width - _dwrite->_font_width) > 0.01f)
             {
                 DWRITE_TEXT_RANGE range{
@@ -905,7 +974,7 @@ void Renderer::DrawGridLine(int row)
 
         // Check if the attributes change,
         // if so draw until this point and continue with the new attributes
-        if (this->_grid_cell_properties[base + i].hl_attrib_id != hl_attrib_id)
+        if (_grid->Props()[base + i].hl_attrib_id != hl_attrib_id)
         {
             D2D1_RECT_F bg_rect{.left = col_offset * _dwrite->_font_width,
                                 .top = row * _dwrite->_font_height,
@@ -918,7 +987,7 @@ void Renderer::DrawGridLine(int row)
             this->ApplyHighlightAttributes(&this->_hl_attribs[hl_attrib_id],
                                            text_layout.Get(), col_offset, i);
 
-            hl_attrib_id = this->_grid_cell_properties[base + i].hl_attrib_id;
+            hl_attrib_id = _grid->Props()[base + i].hl_attrib_id;
             col_offset = i;
         }
     }
@@ -930,23 +999,19 @@ void Renderer::DrawGridLine(int row)
     last_rect.left = col_offset * _dwrite->_font_width;
     this->DrawBackgroundRect(last_rect, &this->_hl_attribs[hl_attrib_id]);
     this->ApplyHighlightAttributes(&this->_hl_attribs[hl_attrib_id],
-                                   text_layout.Get(), col_offset,
-                                   this->_grid_cols);
+                                   text_layout.Get(), col_offset, cols);
 
     _device->_d2d_context->PushAxisAlignedClip(rect,
                                                D2D1_ANTIALIAS_MODE_ALIASED);
-    _dwrite->SetTypographyIfNotLigatures(
-        text_layout, static_cast<uint32_t>(this->_grid_cols));
+    _dwrite->SetTypographyIfNotLigatures(text_layout,
+                                         static_cast<uint32_t>(cols));
     text_layout->Draw(this, _device->_glyph_renderer.Get(), 0.0f, rect.top);
     _device->_d2d_context->PopAxisAlignedClip();
 }
 
 void Renderer::DrawGridLines(mpack_node_t grid_lines)
 {
-    assert(this->_grid_chars != nullptr);
-    assert(this->_grid_cell_properties != nullptr);
-
-    int grid_size = this->_grid_cols * this->_grid_rows;
+    int grid_size = _grid->Count();
     size_t line_count = mpack_node_array_length(grid_lines);
     for (size_t i = 1; i < line_count; ++i)
     {
@@ -984,20 +1049,19 @@ void Renderer::DrawGridLines(mpack_node_t grid_lines)
                     mpack_node_array_at(cells_array, j + 1), 0)) == 0)
             {
 
-                int offset = row * this->_grid_cols + col_offset;
-                this->_grid_cell_properties[offset].is_wide_char = true;
-                this->_grid_cell_properties[offset].hl_attrib_id = hl_attrib_id;
-                this->_grid_cell_properties[offset + 1].hl_attrib_id =
-                    hl_attrib_id;
+                int offset = row * _grid->Cols() + col_offset;
+                _grid->Props()[offset].is_wide_char = true;
+                _grid->Props()[offset].hl_attrib_id = hl_attrib_id;
+                _grid->Props()[offset + 1].hl_attrib_id = hl_attrib_id;
 
                 int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
-                                                  &this->_grid_chars[offset],
+                                                  &_grid->Chars()[offset],
                                                   grid_size - offset);
                 assert(wstrlen == 1 || wstrlen == 2);
 
                 if (wstrlen == 1)
                 {
-                    this->_grid_chars[offset + 1] = L'\0';
+                    _grid->Chars()[offset + 1] = L'\0';
                 }
 
                 col_offset += 2;
@@ -1015,22 +1079,21 @@ void Renderer::DrawGridLines(mpack_node_t grid_lines)
                 repeat = MPackIntFromArray(cells, 2);
             }
 
-            int offset = row * this->_grid_cols + col_offset;
+            int offset = row * _grid->Cols() + col_offset;
             int wstrlen = 0;
             for (int k = 0; k < repeat; ++k)
             {
                 int idx = offset + (k * wstrlen);
-                wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
-                                              &this->_grid_chars[idx],
-                                              grid_size - idx);
+                wstrlen =
+                    MultiByteToWideChar(CP_UTF8, 0, str, strlen,
+                                        &_grid->Chars()[idx], grid_size - idx);
             }
 
             int wstrlen_with_repetitions = wstrlen * repeat;
             for (int k = 0; k < wstrlen_with_repetitions; ++k)
             {
-                this->_grid_cell_properties[offset + k].hl_attrib_id =
-                    hl_attrib_id;
-                this->_grid_cell_properties[offset + k].is_wide_char = false;
+                _grid->Props()[offset + k].hl_attrib_id = hl_attrib_id;
+                _grid->Props()[offset + k].is_wide_char = false;
             }
 
             col_offset += wstrlen_with_repetitions;
@@ -1043,11 +1106,11 @@ void Renderer::DrawGridLines(mpack_node_t grid_lines)
 void Renderer::DrawCursor()
 {
     int cursor_grid_offset =
-        this->_cursor.row * this->_grid_cols + this->_cursor.col;
+        this->_cursor.row * _grid->Cols() + this->_cursor.col;
 
     int double_width_char_factor = 1;
-    if (cursor_grid_offset < (this->_grid_rows * this->_grid_cols) &&
-        this->_grid_cell_properties[cursor_grid_offset].is_wide_char)
+    if (cursor_grid_offset < _grid->Count() &&
+        _grid->Props()[cursor_grid_offset].is_wide_char)
     {
         double_width_char_factor += 1;
     }
@@ -1072,7 +1135,7 @@ void Renderer::DrawCursor()
     if (this->_cursor.mode_info->shape == CursorShape::Block)
     {
         this->DrawHighlightedText(cursor_fg_rect,
-                                  &this->_grid_chars[cursor_grid_offset],
+                                  &_grid->Chars()[cursor_grid_offset],
                                   double_width_char_factor, &cursor_hl_attribs);
     }
 }
@@ -1083,25 +1146,7 @@ void Renderer::UpdateGridSize(mpack_node_t grid_resize)
     int grid_cols = MPackIntFromArray(grid_resize_params, 1);
     int grid_rows = MPackIntFromArray(grid_resize_params, 2);
 
-    if (this->_grid_chars == nullptr ||
-        this->_grid_cell_properties == nullptr ||
-        this->_grid_cols != grid_cols || this->_grid_rows != grid_rows)
-    {
-
-        this->_grid_cols = grid_cols;
-        this->_grid_rows = grid_rows;
-
-        this->_grid_chars = static_cast<wchar_t *>(malloc(
-            static_cast<size_t>(grid_cols) * grid_rows * sizeof(wchar_t)));
-        // Initialize all grid character to a space. An empty
-        // grid cell is equivalent to a space in a text layout
-        for (int i = 0; i < grid_cols * grid_rows; ++i)
-        {
-            this->_grid_chars[i] = L' ';
-        }
-        this->_grid_cell_properties = static_cast<CellProperty *>(calloc(
-            static_cast<size_t>(grid_cols) * grid_rows, sizeof(CellProperty)));
-    }
+    _grid->Resize(grid_rows, grid_cols);
 }
 
 void Renderer::UpdateCursorPos(mpack_node_t cursor_goto)
@@ -1195,14 +1240,7 @@ void Renderer::ScrollRegion(mpack_node_t scroll_region)
             continue;
         }
 
-        memcpy(&this->_grid_chars[target_row * this->_grid_cols + left],
-               &this->_grid_chars[i * this->_grid_cols + left],
-               (right - left) * sizeof(wchar_t));
-
-        memcpy(
-            &this->_grid_cell_properties[target_row * this->_grid_cols + left],
-            &this->_grid_cell_properties[i * this->_grid_cols + left],
-            (right - left) * sizeof(CellProperty));
+        _grid->LineCopy(left, right, i, target_row);
 
         // Sadly I have given up on making use of IDXGISwapChain1::Present1
         // scroll_rects or bitmap copies. The former seems insufficient for
@@ -1215,7 +1253,7 @@ void Renderer::ScrollRegion(mpack_node_t scroll_region)
     // Redraw the line which the cursor has moved to, as it is no
     // longer guaranteed that the cursor is still there
     int cursor_row = this->_cursor.row - rows;
-    if (cursor_row >= 0 && cursor_row < this->_grid_rows)
+    if (cursor_row >= 0 && cursor_row < _grid->Rows())
     {
         this->DrawGridLine(cursor_row);
     }
@@ -1223,8 +1261,8 @@ void Renderer::ScrollRegion(mpack_node_t scroll_region)
 
 void Renderer::DrawBorderRectangles()
 {
-    float left_border = _dwrite->_font_width * this->_grid_cols;
-    float top_border = _dwrite->_font_height * this->_grid_rows;
+    float left_border = _dwrite->_font_width * _grid->Cols();
+    float top_border = _dwrite->_font_height * _grid->Rows();
 
     if (left_border != static_cast<float>(this->_pixel_size.width))
     {
@@ -1301,17 +1339,11 @@ void Renderer::SetGuiOptions(mpack_node_t option_set)
 
 void Renderer::ClearGrid()
 {
-    // Initialize all grid character to a space.
-    for (int i = 0; i < this->_grid_cols * this->_grid_rows; ++i)
-    {
-        this->_grid_chars[i] = L' ';
-    }
-    memset(this->_grid_cell_properties, 0,
-           this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
+    _grid->Clear();
     D2D1_RECT_F rect{.left = 0.0f,
                      .top = 0.0f,
-                     .right = this->_grid_cols * _dwrite->_font_width,
-                     .bottom = this->_grid_rows * _dwrite->_font_height};
+                     .right = _grid->Cols() * _dwrite->_font_width,
+                     .bottom = _grid->Rows() * _dwrite->_font_height};
     this->DrawBackgroundRect(rect, &this->_hl_attribs[0]);
 }
 
@@ -1390,7 +1422,7 @@ void Renderer::Redraw(mpack_node_t params)
         {
             // If the old cursor position is still within the row bounds,
             // redraw the line to get rid of the cursor
-            if (this->_cursor.row < this->_grid_rows)
+            if (this->_cursor.row < _grid->Rows())
             {
                 this->DrawGridLine(this->_cursor.row);
             }
@@ -1403,7 +1435,7 @@ void Renderer::Redraw(mpack_node_t params)
         else if (MPackMatchString(redraw_command_name, "mode_change"))
         {
             // Redraw cursor if its inside the bounds
-            if (this->_cursor.row < this->_grid_rows)
+            if (this->_cursor.row < _grid->Rows())
             {
                 this->DrawGridLine(this->_cursor.row);
             }
@@ -1413,7 +1445,7 @@ void Renderer::Redraw(mpack_node_t params)
         {
             this->_ui_busy = true;
             // Hide cursor while UI is busy
-            if (this->_cursor.row < this->_grid_rows)
+            if (this->_cursor.row < _grid->Rows())
             {
                 this->DrawGridLine(this->_cursor.row);
             }
@@ -1474,7 +1506,7 @@ bool Renderer::SetDpiScale(float current_dpi, int *pRows, int *pCols)
     auto [rows, cols] = GridSize();
     *pRows = rows;
     *pCols = cols;
-    return rows != _grid_rows || cols != _grid_cols;
+    return rows != _grid->Rows() || cols != _grid->Cols();
 }
 
 bool Renderer::ResizeFont(float size, int *pRows, int *pCols)
@@ -1483,7 +1515,7 @@ bool Renderer::ResizeFont(float size, int *pRows, int *pCols)
     auto [rows, cols] = GridSize();
     *pRows = rows;
     *pCols = cols;
-    return rows != _grid_rows || cols != _grid_cols;
+    return rows != _grid->Rows() || cols != _grid->Cols();
 }
 
 HRESULT Renderer::DrawGlyphRun(

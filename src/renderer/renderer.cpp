@@ -819,7 +819,6 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
                                                D2D1_ANTIALIAS_MODE_ALIASED);
     text_layout->Draw(this, _device->_glyph_renderer.Get(), rect.left,
                       rect.top);
-    text_layout->Release();
     _device->_d2d_context->PopAxisAlignedClip();
 }
 

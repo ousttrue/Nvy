@@ -1,4 +1,5 @@
 #include "nvim/nvim.h"
+#include "renderer/grid.h"
 #include "renderer/renderer.h"
 
 struct Context
@@ -15,6 +16,8 @@ struct Context
     UINT saved_dpi_scaling;
     uint32_t saved_window_width;
     uint32_t saved_window_height;
+    bool _ui_busy = false;
+    Grid _grid;
 
     void ToggleFullscreen()
     {
@@ -110,7 +113,96 @@ struct Context
         {
             if (MPackMatchString(result.notification.name, "redraw"))
             {
-                renderer->Redraw(result.params);
+                Redraw(result.params);
+            }
+        }
+    }
+
+    void Redraw(mpack_node_t params)
+    {
+        renderer->InitializeWindowDependentResources();
+        renderer->StartDraw();
+
+        uint64_t redraw_commands_length = mpack_node_array_length(params);
+        for (uint64_t i = 0; i < redraw_commands_length; ++i)
+        {
+            mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
+            mpack_node_t redraw_command_name =
+                mpack_node_array_at(redraw_command_arr, 0);
+
+            if (MPackMatchString(redraw_command_name, "option_set"))
+            {
+                renderer->SetGuiOptions(redraw_command_arr);
+            }
+            if (MPackMatchString(redraw_command_name, "grid_resize"))
+            {
+                renderer->UpdateGridSize(redraw_command_arr);
+            }
+            if (MPackMatchString(redraw_command_name, "grid_clear"))
+            {
+                renderer->ClearGrid();
+            }
+            else if (MPackMatchString(redraw_command_name,
+                                      "default_colors_set"))
+            {
+                renderer->UpdateDefaultColors(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "hl_attr_define"))
+            {
+                renderer->UpdateHighlightAttributes(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "grid_line"))
+            {
+                renderer->DrawGridLines(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "grid_cursor_goto"))
+            {
+                // If the old cursor position is still within the row bounds,
+                // redraw the line to get rid of the cursor
+                if (_grid.CursorRow() < _grid.Rows())
+                {
+                    renderer->DrawGridLine(_grid.CursorRow());
+                }
+                renderer->UpdateCursorPos(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "mode_info_set"))
+            {
+                renderer->UpdateCursorModeInfos(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "mode_change"))
+            {
+                // Redraw cursor if its inside the bounds
+                if (_grid.CursorRow() < _grid.Rows())
+                {
+                    renderer->DrawGridLine(_grid.CursorRow());
+                }
+                renderer->UpdateCursorMode(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "busy_start"))
+            {
+                this->_ui_busy = true;
+                // Hide cursor while UI is busy
+                if (_grid.CursorRow() < _grid.Rows())
+                {
+                    renderer->DrawGridLine(_grid.CursorRow());
+                }
+            }
+            else if (MPackMatchString(redraw_command_name, "busy_stop"))
+            {
+                this->_ui_busy = false;
+            }
+            else if (MPackMatchString(redraw_command_name, "grid_scroll"))
+            {
+                renderer->ScrollRegion(redraw_command_arr);
+            }
+            else if (MPackMatchString(redraw_command_name, "flush"))
+            {
+                if (!this->_ui_busy)
+                {
+                    renderer->DrawCursor();
+                }
+                renderer->DrawBorderRectangles();
+                renderer->FinishDraw();
             }
         }
     }
@@ -560,7 +652,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                      &(context.saved_dpi_scaling));
 
     Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-                      context.saved_dpi_scaling);
+                      context.saved_dpi_scaling, &context._grid);
     context.renderer = &renderer;
 
     MSG msg;

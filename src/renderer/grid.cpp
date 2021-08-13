@@ -5,6 +5,10 @@ Grid::Grid()
     this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 }
 
+Grid::~Grid()
+{
+}
+
 void Grid::Resize(int rows, int cols)
 {
     if (rows != _grid_rows || cols != _grid_cols)

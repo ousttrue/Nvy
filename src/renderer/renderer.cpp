@@ -632,10 +632,10 @@ void Renderer::HandleDeviceLost()
 }
 
 Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-                   float monitor_dpi)
+                   float monitor_dpi, Grid *grid)
     : _dwrite(
           DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
-      _grid(new Grid)
+      _grid(grid)
 {
     this->_hwnd = hwnd;
     this->HandleDeviceLost();
@@ -693,8 +693,7 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
         mpack_node_t attrib_map =
             mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 1);
 
-        const auto SetColor = [&](const char *name, uint32_t *color)
-        {
+        const auto SetColor = [&](const char *name, uint32_t *color) {
             mpack_node_t color_node =
                 mpack_node_map_cstr_optional(attrib_map, name);
             if (!mpack_node_is_missing(color_node))
@@ -713,9 +712,8 @@ void Renderer::UpdateHighlightAttributes(mpack_node_t highlight_attribs)
         SetColor("special",
                  &_grid->GetHighlightAttributes()[attrib_index].special);
 
-        const auto SetFlag =
-            [&](const char *flag_name, HighlightAttributeFlags flag)
-        {
+        const auto SetFlag = [&](const char *flag_name,
+                                 HighlightAttributeFlags flag) {
             mpack_node_t flag_node =
                 mpack_node_map_cstr_optional(attrib_map, flag_name);
             if (!mpack_node_is_missing(flag_node))
@@ -1278,95 +1276,6 @@ void Renderer::FinishDraw()
     if (hr == DXGI_ERROR_DEVICE_REMOVED)
     {
         this->HandleDeviceLost();
-    }
-}
-
-void Renderer::Redraw(mpack_node_t params)
-{
-    this->InitializeWindowDependentResources();
-
-    this->StartDraw();
-
-    uint64_t redraw_commands_length = mpack_node_array_length(params);
-    for (uint64_t i = 0; i < redraw_commands_length; ++i)
-    {
-        mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
-        mpack_node_t redraw_command_name =
-            mpack_node_array_at(redraw_command_arr, 0);
-
-        if (MPackMatchString(redraw_command_name, "option_set"))
-        {
-            this->SetGuiOptions(redraw_command_arr);
-        }
-        if (MPackMatchString(redraw_command_name, "grid_resize"))
-        {
-            this->UpdateGridSize(redraw_command_arr);
-        }
-        if (MPackMatchString(redraw_command_name, "grid_clear"))
-        {
-            this->ClearGrid();
-        }
-        else if (MPackMatchString(redraw_command_name, "default_colors_set"))
-        {
-            this->UpdateDefaultColors(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "hl_attr_define"))
-        {
-            this->UpdateHighlightAttributes(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "grid_line"))
-        {
-            this->DrawGridLines(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "grid_cursor_goto"))
-        {
-            // If the old cursor position is still within the row bounds,
-            // redraw the line to get rid of the cursor
-            if (_grid->CursorRow() < _grid->Rows())
-            {
-                this->DrawGridLine(_grid->CursorRow());
-            }
-            this->UpdateCursorPos(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "mode_info_set"))
-        {
-            this->UpdateCursorModeInfos(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "mode_change"))
-        {
-            // Redraw cursor if its inside the bounds
-            if (_grid->CursorRow() < _grid->Rows())
-            {
-                this->DrawGridLine(_grid->CursorRow());
-            }
-            this->UpdateCursorMode(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "busy_start"))
-        {
-            this->_ui_busy = true;
-            // Hide cursor while UI is busy
-            if (_grid->CursorRow() < _grid->Rows())
-            {
-                this->DrawGridLine(_grid->CursorRow());
-            }
-        }
-        else if (MPackMatchString(redraw_command_name, "busy_stop"))
-        {
-            this->_ui_busy = false;
-        }
-        else if (MPackMatchString(redraw_command_name, "grid_scroll"))
-        {
-            this->ScrollRegion(redraw_command_arr);
-        }
-        else if (MPackMatchString(redraw_command_name, "flush"))
-        {
-            if (!this->_ui_busy)
-            {
-                this->DrawCursor();
-            }
-            this->DrawBorderRectangles();
-            this->FinishDraw();
-        }
     }
 }
 

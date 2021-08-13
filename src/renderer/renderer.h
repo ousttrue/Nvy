@@ -30,24 +30,22 @@ class Renderer
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
-    std::unique_ptr<class Grid> _grid;
+    class Grid *_grid = nullptr;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
     D2D1_SIZE_U _pixel_size = {0};
 
     HWND _hwnd = nullptr;
     bool _draw_active = false;
-    bool _ui_busy = false;
 
 public:
     Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-             float monitor_dpi);
+             float monitor_dpi, Grid *grid);
     ~Renderer();
     void Attach();
     void Resize(uint32_t width, uint32_t height);
     void UpdateGuiFont(const char *guifont, size_t strlen);
     void UpdateFont(float font_size, const char *font_string, int strlen);
-    void Redraw(mpack_node_t params);
     PixelSize GridToPixelSize(int rows, int cols);
     GridSize PixelsToGridSize(int width, int height);
     GridPoint CursorToGridPoint(int x, int y);
@@ -65,7 +63,7 @@ public:
                           IUnknown *client_drawing_effect);
     HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
-private:
+// private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
     void UpdateDefaultColors(mpack_node_t default_colors);

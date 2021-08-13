@@ -61,6 +61,9 @@ class Grid
 
 public:
     Grid();
+    ~Grid();
+    Grid(const Grid &) = delete;
+    Grid &operator=(const Grid &) = delete;
 
     int Rows() const
     {

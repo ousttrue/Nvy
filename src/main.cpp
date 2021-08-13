@@ -1,127 +1,11 @@
 #include "commandline.h"
+#include "third_party/mpack/mpack.h"
 #include "win32window.h"
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
-#include <stdint.h>
-#include <string>
-#include <functional>
-#include <list>
 
 auto WINDOW_CLASS = L"Nvy_Class";
 auto WINDOW_TITLE = L"Nvy";
-
-struct Context
-{
-    GridSize start_grid_size;
-    bool start_maximized;
-    HWND hwnd;
-    Nvim *nvim;
-    Renderer *renderer;
-    bool xbuttons[2];
-    GridPoint cached_cursor_grid_pos;
-    WINDOWPLACEMENT saved_window_placement;
-    uint32_t saved_window_width;
-    uint32_t saved_window_height;
-
-    void ToggleFullscreen()
-    {
-        DWORD style = GetWindowLong(hwnd, GWL_STYLE);
-        MONITORINFO mi{.cbSize = sizeof(MONITORINFO)};
-        if (style & WS_OVERLAPPEDWINDOW)
-        {
-            if (GetWindowPlacement(hwnd, &saved_window_placement) &&
-                GetMonitorInfo(
-                    MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi))
-            {
-                SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
-                SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left,
-                             mi.rcMonitor.top,
-                             mi.rcMonitor.right - mi.rcMonitor.left,
-                             mi.rcMonitor.bottom - mi.rcMonitor.top,
-                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-            }
-        }
-        else
-        {
-            SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
-            SetWindowPlacement(hwnd, &saved_window_placement);
-            SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
-                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-        }
-    }
-
-    void ProcessMPackMessage(mpack_tree_t *tree)
-    {
-        MPackMessageResult result = MPackExtractMessageResult(tree);
-
-        if (result.type == MPackMessageType::Response)
-        {
-            auto method = nvim->GetRequestFromID(result.response.msg_id);
-            switch (method)
-            {
-            case NvimRequest::vim_get_api_info:
-            {
-                mpack_node_t top_level_map =
-                    mpack_node_array_at(result.params, 1);
-                mpack_node_t version_map =
-                    mpack_node_map_value_at(top_level_map, 0);
-                int64_t api_level =
-                    mpack_node_map_cstr(version_map, "api_level").data->value.i;
-                assert(api_level > 6);
-            }
-            break;
-            case NvimRequest::nvim_eval:
-            {
-                Vec<char> guifont_buffer;
-                nvim->ParseConfig(result.params, &guifont_buffer);
-
-                if (!guifont_buffer.empty())
-                {
-                    renderer->UpdateGuiFont(guifont_buffer.data(),
-                                            strlen(guifont_buffer.data()));
-                }
-
-                if (start_grid_size.rows != 0 && start_grid_size.cols != 0)
-                {
-                    PixelSize start_size = renderer->GridToPixelSize(
-                        start_grid_size.rows, start_grid_size.cols);
-                    RECT client_rect;
-                    GetClientRect(hwnd, &client_rect);
-                    MoveWindow(hwnd, client_rect.left, client_rect.top,
-                               start_size.width, start_size.height, false);
-                }
-
-                // Attach the renderer now that the window size is
-                // determined
-                // renderer->Attach();
-                auto [rows, cols] = renderer->GridSize();
-                nvim->SendUIAttach(rows, cols);
-
-                if (start_maximized)
-                {
-                    ToggleFullscreen();
-                }
-                ShowWindow(hwnd, SW_SHOWDEFAULT);
-            }
-            break;
-            case NvimRequest::nvim_input:
-            case NvimRequest::nvim_input_mouse:
-            case NvimRequest::nvim_command:
-            {
-            }
-            break;
-            }
-        }
-        else if (result.type == MPackMessageType::Notification)
-        {
-            if (MPackMatchString(result.notification.name, "redraw"))
-            {
-                renderer->Redraw(result.params);
-            }
-        }
-    }
-};
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
@@ -170,8 +54,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
             case WindowEventTypes::MouseMove:
             {
-                auto grid_pos = renderer.CursorToGridPoint(
-                    event.cursor_pos.x, event.cursor_pos.y);
+                auto grid_pos = renderer.CursorToGridPoint(event.cursor_pos.x,
+                                                           event.cursor_pos.y);
                 // if (context->cached_cursor_grid_pos.col != grid_pos.col ||
                 //     context->cached_cursor_grid_pos.row != grid_pos.row)
                 // {
@@ -180,8 +64,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                 //     case MK_LBUTTON:
                 //     {
                 //         context->nvim->SendMouseInput(
-                //             MouseButton::Left, MouseAction::Drag, grid_pos.row,
-                //             grid_pos.col);
+                //             MouseButton::Left, MouseAction::Drag,
+                //             grid_pos.row, grid_pos.col);
                 //     }
                 //     break;
                 //     case MK_MBUTTON:
@@ -194,8 +78,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                 //     case MK_RBUTTON:
                 //     {
                 //         context->nvim->SendMouseInput(
-                //             MouseButton::Right, MouseAction::Drag, grid_pos.row,
-                //             grid_pos.col);
+                //             MouseButton::Right, MouseAction::Drag,
+                //             grid_pos.row, grid_pos.col);
                 //     }
                 //     break;
                 //     }
@@ -309,16 +193,90 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
     renderer.Attach(hwnd);
 
-    nvim.Launch(cmd.nvim_command_line,
-                // call from thread
-                [hwnd](const mpack_tree_t *tree)
+    nvim.Launch(
+        cmd.nvim_command_line,
+        // call from thread
+        [hwnd, &nvim, &renderer](const mpack_tree_t *tree)
+        {
+            if (tree == nullptr)
+            {
+                // on exit nvim
+                PostMessage(hwnd, WM_DESTROY, 0, 0);
+                return;
+            }
+
+            auto result =
+                MPackExtractMessageResult(const_cast<mpack_tree_t *>(tree));
+
+            if (result.type == MPackMessageType::Response)
+            {
+                auto method = nvim.GetRequestFromID(result.response.msg_id);
+                switch (method)
                 {
-                    if (tree == nullptr)
+                case NvimRequest::vim_get_api_info:
+                {
+                    mpack_node_t top_level_map =
+                        mpack_node_array_at(result.params, 1);
+                    mpack_node_t version_map =
+                        mpack_node_map_value_at(top_level_map, 0);
+                    int64_t api_level =
+                        mpack_node_map_cstr(version_map, "api_level")
+                            .data->value.i;
+                    assert(api_level > 6);
+                }
+                break;
+                case NvimRequest::nvim_eval:
+                {
+                    Vec<char> guifont_buffer;
+                    nvim.ParseConfig(result.params, &guifont_buffer);
+
+                    if (!guifont_buffer.empty())
                     {
-                        // on exit nvim
-                        PostMessage(hwnd, WM_DESTROY, 0, 0);
+                        renderer.UpdateGuiFont(guifont_buffer.data(),
+                                               strlen(guifont_buffer.data()));
                     }
-                });
+
+                    // if (start_grid_size.rows != 0 && start_grid_size.cols !=
+                    // 0)
+                    // {
+                    //     PixelSize start_size = renderer->GridToPixelSize(
+                    //         start_grid_size.rows, start_grid_size.cols);
+                    //     RECT client_rect;
+                    //     GetClientRect(hwnd, &client_rect);
+                    //     MoveWindow(hwnd, client_rect.left, client_rect.top,
+                    //                start_size.width, start_size.height,
+                    //                false);
+                    // }
+
+                    // Attach the renderer now that the window size is
+                    // determined
+                    // renderer->Attach();
+                    auto [rows, cols] = renderer.GridSize();
+                    nvim.SendUIAttach(rows, cols);
+
+                    // if (start_maximized)
+                    // {
+                    //     ToggleFullscreen();
+                    // }
+                    ShowWindow(hwnd, SW_SHOWDEFAULT);
+                }
+                break;
+                case NvimRequest::nvim_input:
+                case NvimRequest::nvim_input_mouse:
+                case NvimRequest::nvim_command:
+                {
+                }
+                break;
+                }
+            }
+            else if (result.type == MPackMessageType::Notification)
+            {
+                if (MPackMatchString(result.notification.name, "redraw"))
+                {
+                    renderer.Redraw(result.params);
+                }
+            }
+        });
 
     while (window.ProcessMessage())
     {

@@ -56,6 +56,7 @@ class Win32Window
     std::list<WindowEventCallback> _callbacks;
     UINT _saved_dpi_scaling = 0;
     bool _dead_char_pending = false;
+    WINDOWPLACEMENT _saved_window_placement;
 
 public:
     Win32Window(HINSTANCE instance);
@@ -63,6 +64,7 @@ public:
     HWND Create(const wchar_t *window_class_name, const wchar_t *window_title);
     LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
     bool ProcessMessage();
+    void ToggleFullscreen();
     void OnEvent(const std::function<void(const WindowEvent &)> &callback);
 
 private:

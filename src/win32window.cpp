@@ -360,6 +360,33 @@ bool Win32Window::ProcessMessage()
     return true;
 }
 
+void Win32Window::ToggleFullscreen()
+{
+    DWORD style = GetWindowLong(_hwnd, GWL_STYLE);
+    MONITORINFO mi{.cbSize = sizeof(MONITORINFO)};
+    if (style & WS_OVERLAPPEDWINDOW)
+    {
+        if (GetWindowPlacement(_hwnd, &_saved_window_placement) &&
+            GetMonitorInfo(MonitorFromWindow(_hwnd, MONITOR_DEFAULTTONEAREST),
+                           &mi))
+        {
+            SetWindowLong(_hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+            SetWindowPos(_hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
+                         mi.rcMonitor.right - mi.rcMonitor.left,
+                         mi.rcMonitor.bottom - mi.rcMonitor.top,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        }
+    }
+    else
+    {
+        SetWindowLong(_hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(_hwnd, &_saved_window_placement);
+        SetWindowPos(_hwnd, NULL, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
+
 void Win32Window::OnEvent(
     const std::function<void(const WindowEvent &)> &callback)
 {

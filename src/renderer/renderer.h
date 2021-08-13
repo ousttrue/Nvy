@@ -23,14 +23,6 @@ struct HighlightAttributes
     uint16_t flags;
 };
 
-enum class CursorShape
-{
-    None,
-    Block,
-    Vertical,
-    Horizontal
-};
-
 struct GridPoint
 {
     int row;
@@ -47,20 +39,7 @@ struct PixelSize
     int height;
 };
 
-struct CursorModeInfo
-{
-    CursorShape shape;
-    uint16_t hl_attrib_id;
-};
-struct Cursor
-{
-    CursorModeInfo *mode_info;
-    int row;
-    int col;
-};
-
 constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
-constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr int MAX_FONT_LENGTH = 128;
 constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
@@ -71,9 +50,6 @@ class Renderer
     std::unique_ptr<class DWriteImpl> _dwrite;
     std::unique_ptr<class GridImpl> _grid;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
-
-    CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
-    Cursor _cursor = {0};
 
     Vec<HighlightAttributes> _hl_attribs;
 

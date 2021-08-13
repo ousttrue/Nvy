@@ -820,29 +820,26 @@ void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
 
 D2D1_RECT_F Renderer::GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect)
 {
-    if (this->_cursor.mode_info)
+    switch (_grid->GetCursorShape())
     {
-        switch (this->_cursor.mode_info->shape)
-        {
-        case CursorShape::None:
-        {
-        }
-            return cursor_bg_rect;
-        case CursorShape::Block:
-        {
-        }
-            return cursor_bg_rect;
-        case CursorShape::Vertical:
-        {
-            cursor_bg_rect.right = cursor_bg_rect.left + 2;
-        }
-            return cursor_bg_rect;
-        case CursorShape::Horizontal:
-        {
-            cursor_bg_rect.top = cursor_bg_rect.bottom - 2;
-        }
-            return cursor_bg_rect;
-        }
+    case CursorShape::None:
+    {
+        return cursor_bg_rect;
+    }
+    case CursorShape::Block:
+    {
+        return cursor_bg_rect;
+    }
+    case CursorShape::Vertical:
+    {
+        cursor_bg_rect.right = cursor_bg_rect.left + 2;
+        return cursor_bg_rect;
+    }
+    case CursorShape::Horizontal:
+    {
+        cursor_bg_rect.top = cursor_bg_rect.bottom - 2;
+        return cursor_bg_rect;
+    }
     }
     return cursor_bg_rect;
 }
@@ -1040,8 +1037,7 @@ void Renderer::DrawGridLines(mpack_node_t grid_lines)
 
 void Renderer::DrawCursor()
 {
-    int cursor_grid_offset =
-        this->_cursor.row * _grid->Cols() + this->_cursor.col;
+    int cursor_grid_offset = _grid->CursorOffset();
 
     int double_width_char_factor = 1;
     if (cursor_grid_offset < _grid->Count() &&
@@ -1051,23 +1047,23 @@ void Renderer::DrawCursor()
     }
 
     HighlightAttributes cursor_hl_attribs =
-        this->_hl_attribs[this->_cursor.mode_info->hl_attrib_id];
-    if (this->_cursor.mode_info->hl_attrib_id == 0)
+        this->_hl_attribs[_grid->CursorModeHighlightAttribute()];
+    if (_grid->CursorModeHighlightAttribute() == 0)
     {
         cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
     }
 
     D2D1_RECT_F cursor_rect{
-        .left = this->_cursor.col * _dwrite->_font_width,
-        .top = this->_cursor.row * _dwrite->_font_height,
-        .right = this->_cursor.col * _dwrite->_font_width +
+        .left = _grid->CursorCol() * _dwrite->_font_width,
+        .top = _grid->CursorRow() * _dwrite->_font_height,
+        .right = _grid->CursorCol() * _dwrite->_font_width +
                  _dwrite->_font_width * double_width_char_factor,
-        .bottom = (this->_cursor.row * _dwrite->_font_height) +
+        .bottom = (_grid->CursorRow() * _dwrite->_font_height) +
                   _dwrite->_font_height};
     D2D1_RECT_F cursor_fg_rect = this->GetCursorForegroundRect(cursor_rect);
     this->DrawBackgroundRect(cursor_fg_rect, &cursor_hl_attribs);
 
-    if (this->_cursor.mode_info->shape == CursorShape::Block)
+    if (_grid->GetCursorShape() == CursorShape::Block)
     {
         this->DrawHighlightedText(cursor_fg_rect,
                                   &_grid->Chars()[cursor_grid_offset],
@@ -1087,16 +1083,16 @@ void Renderer::UpdateGridSize(mpack_node_t grid_resize)
 void Renderer::UpdateCursorPos(mpack_node_t cursor_goto)
 {
     mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
-    this->_cursor.row = MPackIntFromArray(cursor_goto_params, 1);
-    this->_cursor.col = MPackIntFromArray(cursor_goto_params, 2);
+    auto row = MPackIntFromArray(cursor_goto_params, 1);
+    auto col = MPackIntFromArray(cursor_goto_params, 2);
+    _grid->SetCursor(row, col);
 }
 
 void Renderer::UpdateCursorMode(mpack_node_t mode_change)
 {
     mpack_node_t mode_change_params = mpack_node_array_at(mode_change, 1);
-    this->_cursor.mode_info =
-        &this->_cursor_mode_infos[mpack_node_array_at(mode_change_params, 1)
-                                      .data->value.u];
+    _grid->SetCursorModeInfo(
+        mpack_node_array_at(mode_change_params, 1).data->value.u);
 }
 
 void Renderer::UpdateCursorModeInfos(mpack_node_t mode_info_set_params)
@@ -1111,7 +1107,7 @@ void Renderer::UpdateCursorModeInfos(mpack_node_t mode_info_set_params)
     {
         mpack_node_t mode_info_map = mpack_node_array_at(mode_infos, i);
 
-        this->_cursor_mode_infos[i].shape = CursorShape::None;
+        _grid->SetCursorShape(i, CursorShape::None);
         mpack_node_t cursor_shape =
             mpack_node_map_cstr_optional(mode_info_map, "cursor_shape");
         if (!mpack_node_is_missing(cursor_shape))
@@ -1120,25 +1116,25 @@ void Renderer::UpdateCursorModeInfos(mpack_node_t mode_info_set_params)
             size_t strlen = mpack_node_strlen(cursor_shape);
             if (!strncmp(cursor_shape_str, "block", strlen))
             {
-                this->_cursor_mode_infos[i].shape = CursorShape::Block;
+                _grid->SetCursorShape(i, CursorShape::Block);
             }
             else if (!strncmp(cursor_shape_str, "vertical", strlen))
             {
-                this->_cursor_mode_infos[i].shape = CursorShape::Vertical;
+                _grid->SetCursorShape(i, CursorShape::Vertical);
             }
             else if (!strncmp(cursor_shape_str, "horizontal", strlen))
             {
-                this->_cursor_mode_infos[i].shape = CursorShape::Horizontal;
+                _grid->SetCursorShape(i, CursorShape::Horizontal);
             }
         }
 
-        this->_cursor_mode_infos[i].hl_attrib_id = 0;
+        _grid->SetCursorModeHighlightAttribute(i, 0);
         mpack_node_t hl_attrib_index =
             mpack_node_map_cstr_optional(mode_info_map, "attr_id");
         if (!mpack_node_is_missing(hl_attrib_index))
         {
-            this->_cursor_mode_infos[i].hl_attrib_id =
-                static_cast<int>(hl_attrib_index.data->value.i);
+            _grid->SetCursorModeHighlightAttribute(
+                i, static_cast<int>(hl_attrib_index.data->value.i));
         }
     }
 }
@@ -1187,7 +1183,7 @@ void Renderer::ScrollRegion(mpack_node_t scroll_region)
 
     // Redraw the line which the cursor has moved to, as it is no
     // longer guaranteed that the cursor is still there
-    int cursor_row = this->_cursor.row - rows;
+    int cursor_row = _grid->CursorRow() - rows;
     if (cursor_row >= 0 && cursor_row < _grid->Rows())
     {
         this->DrawGridLine(cursor_row);
@@ -1357,9 +1353,9 @@ void Renderer::Redraw(mpack_node_t params)
         {
             // If the old cursor position is still within the row bounds,
             // redraw the line to get rid of the cursor
-            if (this->_cursor.row < _grid->Rows())
+            if (_grid->CursorRow() < _grid->Rows())
             {
-                this->DrawGridLine(this->_cursor.row);
+                this->DrawGridLine(_grid->CursorRow());
             }
             this->UpdateCursorPos(redraw_command_arr);
         }
@@ -1370,9 +1366,9 @@ void Renderer::Redraw(mpack_node_t params)
         else if (MPackMatchString(redraw_command_name, "mode_change"))
         {
             // Redraw cursor if its inside the bounds
-            if (this->_cursor.row < _grid->Rows())
+            if (_grid->CursorRow() < _grid->Rows())
             {
-                this->DrawGridLine(this->_cursor.row);
+                this->DrawGridLine(_grid->CursorRow());
             }
             this->UpdateCursorMode(redraw_command_arr);
         }
@@ -1380,9 +1376,9 @@ void Renderer::Redraw(mpack_node_t params)
         {
             this->_ui_busy = true;
             // Hide cursor while UI is busy
-            if (this->_cursor.row < _grid->Rows())
+            if (_grid->CursorRow() < _grid->Rows())
             {
-                this->DrawGridLine(this->_cursor.row);
+                this->DrawGridLine(_grid->CursorRow());
             }
         }
         else if (MPackMatchString(redraw_command_name, "busy_stop"))

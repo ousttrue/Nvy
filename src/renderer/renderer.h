@@ -66,8 +66,6 @@ public:
 // private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
-    void UpdateDefaultColors(mpack_node_t default_colors);
-    void UpdateHighlightAttributes(mpack_node_t highlight_attribs);
     void ApplyHighlightAttributes(struct HighlightAttributes *hl_attribs,
                                   IDWriteTextLayout *text_layout, int start,
                                   int end);
@@ -79,10 +77,6 @@ public:
     void DrawCursor();
     void DrawBorderRectangles();
     void DrawGridLines(mpack_node_t grid_lines);
-    void UpdateGridSize(mpack_node_t grid_resize);
-    void UpdateCursorPos(mpack_node_t cursor_goto);
-    void UpdateCursorMode(mpack_node_t mode_change);
-    void UpdateCursorModeInfos(mpack_node_t mode_info_set_params);
     void ScrollRegion(mpack_node_t scroll_region);
     void SetGuiOptions(mpack_node_t option_set);
     void ClearGrid();

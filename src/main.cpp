@@ -136,7 +136,7 @@ struct Context
             }
             if (MPackMatchString(redraw_command_name, "grid_resize"))
             {
-                renderer->UpdateGridSize(redraw_command_arr);
+                UpdateGridSize(redraw_command_arr);
             }
             if (MPackMatchString(redraw_command_name, "grid_clear"))
             {
@@ -145,11 +145,11 @@ struct Context
             else if (MPackMatchString(redraw_command_name,
                                       "default_colors_set"))
             {
-                renderer->UpdateDefaultColors(redraw_command_arr);
+                UpdateDefaultColors(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "hl_attr_define"))
             {
-                renderer->UpdateHighlightAttributes(redraw_command_arr);
+                UpdateHighlightAttributes(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "grid_line"))
             {
@@ -163,11 +163,11 @@ struct Context
                 {
                     renderer->DrawGridLine(_grid.CursorRow());
                 }
-                renderer->UpdateCursorPos(redraw_command_arr);
+                UpdateCursorPos(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "mode_info_set"))
             {
-                renderer->UpdateCursorModeInfos(redraw_command_arr);
+                UpdateCursorModeInfos(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "mode_change"))
             {
@@ -176,7 +176,7 @@ struct Context
                 {
                     renderer->DrawGridLine(_grid.CursorRow());
                 }
-                renderer->UpdateCursorMode(redraw_command_arr);
+                UpdateCursorMode(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "busy_start"))
             {
@@ -204,6 +204,157 @@ struct Context
                 renderer->DrawBorderRectangles();
                 renderer->FinishDraw();
             }
+        }
+    }
+
+    void UpdateGridSize(mpack_node_t grid_resize)
+    {
+        mpack_node_t grid_resize_params = mpack_node_array_at(grid_resize, 1);
+        int grid_cols = MPackIntFromArray(grid_resize_params, 1);
+        int grid_rows = MPackIntFromArray(grid_resize_params, 2);
+
+        _grid.Resize(grid_rows, grid_cols);
+    }
+
+    void UpdateCursorPos(mpack_node_t cursor_goto)
+    {
+        mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
+        auto row = MPackIntFromArray(cursor_goto_params, 1);
+        auto col = MPackIntFromArray(cursor_goto_params, 2);
+        _grid.SetCursor(row, col);
+    }
+
+    void UpdateCursorModeInfos(mpack_node_t mode_info_set_params)
+    {
+        mpack_node_t mode_info_params =
+            mpack_node_array_at(mode_info_set_params, 1);
+        mpack_node_t mode_infos = mpack_node_array_at(mode_info_params, 1);
+        size_t mode_infos_length = mpack_node_array_length(mode_infos);
+        assert(mode_infos_length <= MAX_CURSOR_MODE_INFOS);
+
+        for (size_t i = 0; i < mode_infos_length; ++i)
+        {
+            mpack_node_t mode_info_map = mpack_node_array_at(mode_infos, i);
+
+            _grid.SetCursorShape(i, CursorShape::None);
+            mpack_node_t cursor_shape =
+                mpack_node_map_cstr_optional(mode_info_map, "cursor_shape");
+            if (!mpack_node_is_missing(cursor_shape))
+            {
+                const char *cursor_shape_str = mpack_node_str(cursor_shape);
+                size_t strlen = mpack_node_strlen(cursor_shape);
+                if (!strncmp(cursor_shape_str, "block", strlen))
+                {
+                    _grid.SetCursorShape(i, CursorShape::Block);
+                }
+                else if (!strncmp(cursor_shape_str, "vertical", strlen))
+                {
+                    _grid.SetCursorShape(i, CursorShape::Vertical);
+                }
+                else if (!strncmp(cursor_shape_str, "horizontal", strlen))
+                {
+                    _grid.SetCursorShape(i, CursorShape::Horizontal);
+                }
+            }
+
+            _grid.SetCursorModeHighlightAttribute(i, 0);
+            mpack_node_t hl_attrib_index =
+                mpack_node_map_cstr_optional(mode_info_map, "attr_id");
+            if (!mpack_node_is_missing(hl_attrib_index))
+            {
+                _grid.SetCursorModeHighlightAttribute(
+                    i, static_cast<int>(hl_attrib_index.data->value.i));
+            }
+        }
+    }
+
+    void UpdateCursorMode(mpack_node_t mode_change)
+    {
+        mpack_node_t mode_change_params = mpack_node_array_at(mode_change, 1);
+        _grid.SetCursorModeInfo(
+            mpack_node_array_at(mode_change_params, 1).data->value.u);
+    }
+
+    void UpdateDefaultColors(mpack_node_t default_colors)
+    {
+        size_t default_colors_arr_length =
+            mpack_node_array_length(default_colors);
+
+        for (size_t i = 1; i < default_colors_arr_length; ++i)
+        {
+            mpack_node_t color_arr = mpack_node_array_at(default_colors, i);
+
+            // Default colors occupy the first index of the highlight attribs
+            // array
+            _grid.GetHighlightAttributes()[0].foreground =
+                static_cast<uint32_t>(
+                    mpack_node_array_at(color_arr, 0).data->value.u);
+            _grid.GetHighlightAttributes()[0].background =
+                static_cast<uint32_t>(
+                    mpack_node_array_at(color_arr, 1).data->value.u);
+            _grid.GetHighlightAttributes()[0].special = static_cast<uint32_t>(
+                mpack_node_array_at(color_arr, 2).data->value.u);
+            _grid.GetHighlightAttributes()[0].flags = 0;
+        }
+    }
+
+    void UpdateHighlightAttributes(mpack_node_t highlight_attribs)
+    {
+        uint64_t attrib_count = mpack_node_array_length(highlight_attribs);
+        for (uint64_t i = 1; i < attrib_count; ++i)
+        {
+            int64_t attrib_index =
+                mpack_node_array_at(mpack_node_array_at(highlight_attribs, i),
+                                    0)
+                    .data->value.i;
+            assert(attrib_index <= MAX_HIGHLIGHT_ATTRIBS);
+
+            mpack_node_t attrib_map = mpack_node_array_at(
+                mpack_node_array_at(highlight_attribs, i), 1);
+
+            const auto SetColor = [&](const char *name, uint32_t *color) {
+                mpack_node_t color_node =
+                    mpack_node_map_cstr_optional(attrib_map, name);
+                if (!mpack_node_is_missing(color_node))
+                {
+                    *color = static_cast<uint32_t>(color_node.data->value.u);
+                }
+                else
+                {
+                    *color = DEFAULT_COLOR;
+                }
+            };
+            SetColor("foreground",
+                     &_grid.GetHighlightAttributes()[attrib_index].foreground);
+            SetColor("background",
+                     &_grid.GetHighlightAttributes()[attrib_index].background);
+            SetColor("special",
+                     &_grid.GetHighlightAttributes()[attrib_index].special);
+
+            const auto SetFlag = [&](const char *flag_name,
+                                     HighlightAttributeFlags flag) {
+                mpack_node_t flag_node =
+                    mpack_node_map_cstr_optional(attrib_map, flag_name);
+                if (!mpack_node_is_missing(flag_node))
+                {
+                    if (flag_node.data->value.b)
+                    {
+                        _grid.GetHighlightAttributes()[attrib_index].flags |=
+                            flag;
+                    }
+                    else
+                    {
+                        _grid.GetHighlightAttributes()[attrib_index].flags &=
+                            ~flag;
+                    }
+                }
+            };
+            SetFlag("reverse", HL_ATTRIB_REVERSE);
+            SetFlag("italic", HL_ATTRIB_ITALIC);
+            SetFlag("bold", HL_ATTRIB_BOLD);
+            SetFlag("strikethrough", HL_ATTRIB_STRIKETHROUGH);
+            SetFlag("underline", HL_ATTRIB_UNDERLINE);
+            SetFlag("undercurl", HL_ATTRIB_UNDERCURL);
         }
     }
 };

@@ -2,6 +2,9 @@
 #include "common/mpack_helper.h"
 #include "third_party/mpack/mpack.h"
 #include <thread>
+#include <queue>
+#include <mutex>
+#include <functional>
 
 constexpr int Megabytes(int n)
 {
@@ -23,8 +26,6 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count)
 
 class NvimImpl
 {
-    MessageCallback _callback;
-
     HANDLE stdin_read = nullptr;
     HANDLE stdin_write = nullptr;
     HANDLE stdout_read = nullptr;
@@ -32,13 +33,14 @@ class NvimImpl
     PROCESS_INFORMATION process_info = {0};
     std::thread _message;
     std::thread _process;
+    std::queue<NvimMessage> _queue;
+    std::mutex _mtx;
 
     int64_t next_msg_id = 0;
     Vec<NvimRequest> msg_id_to_method;
 
 public:
-    NvimImpl(wchar_t *command_line, const MessageCallback &callback)
-        : _callback(callback)
+    NvimImpl(wchar_t *command_line)
     {
         HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info{
@@ -121,6 +123,24 @@ public:
         }
     }
 
+    void Enqueue(const NvimMessage &msg)
+    {
+        std::lock_guard<std::mutex> lock(_mtx);
+        _queue.push(msg);
+    }
+
+    bool TryDequeue(NvimMessage *msg)
+    {
+        std::lock_guard<std::mutex> lock(_mtx);
+        if (_queue.empty())
+        {
+            return false;
+        }
+        *msg = _queue.back();
+        _queue.pop();
+        return true;
+    }
+
     NvimRequest GetRequestFromID(size_t id) const
     {
         assert(id <= this->next_msg_id);
@@ -160,27 +180,31 @@ public:
 
     DWORD MessageHandler()
     {
-        auto tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
-        mpack_tree_init_stream(tree, ReadFromNvim, this->stdout_read,
-                               Megabytes(20), 1024 * 1024);
-
         while (true)
         {
-            mpack_tree_parse(tree);
-            if (mpack_tree_error(tree) != mpack_ok)
+            auto tree = NvimMessage(
+                static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t))),
+                [](mpack_tree_t *p)
+                {
+                    mpack_tree_destroy(p);
+                    free(p);
+                });
+
+            // 20 MB
+            // TODO: pool
+            mpack_tree_init_stream(tree.get(), ReadFromNvim, this->stdout_read,
+                                   Megabytes(20), 1024 * 1024);
+
+            mpack_tree_parse(tree.get());
+            if (mpack_tree_error(tree.get()) != mpack_ok)
             {
                 break;
             }
 
-            // Blocking, dubious thread safety. Seems to work though...
-            _callback(tree);
+            Enqueue(tree);
         }
 
-        mpack_tree_destroy(tree);
-        free(tree);
-
-        // end
-        _callback(nullptr);
+        Enqueue(nullptr);
 
         return 0;
     }
@@ -202,7 +226,7 @@ public:
         }
 
         // end
-        _callback(nullptr);
+        Enqueue(nullptr);
 
         return 0;
     }
@@ -222,9 +246,9 @@ Nvim::~Nvim()
     delete _impl;
 }
 
-void Nvim::Launch(wchar_t *command_line, const MessageCallback &callback)
+void Nvim::Launch(wchar_t *command_line)
 {
-    _impl = new NvimImpl(command_line, callback);
+    _impl = new NvimImpl(command_line);
 }
 
 void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
@@ -649,4 +673,9 @@ void Nvim::OpenFile(const wchar_t *file_name)
 NvimRequest Nvim::GetRequestFromID(size_t id) const
 {
     return _impl->GetRequestFromID(id);
+}
+
+bool Nvim::TryDequeue(NvimMessage *p)
+{
+    return _impl->TryDequeue(p);
 }

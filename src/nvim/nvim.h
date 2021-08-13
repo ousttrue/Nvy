@@ -1,5 +1,5 @@
 #pragma once
-#include <functional>
+#include <memory>
 
 enum NvimRequest : uint8_t
 {
@@ -39,7 +39,7 @@ enum class MouseAction
 };
 constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
-using MessageCallback = std::function<void(const mpack_tree_t *)>;
+using NvimMessage = std::shared_ptr<mpack_tree_t>;
 
 class Nvim
 {
@@ -51,7 +51,7 @@ public:
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;
 
-    void Launch(wchar_t *command_line, const MessageCallback &callback);
+    void Launch(wchar_t *command_line);
     void ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out);
     void SendUIAttach(int grid_rows, int grid_cols);
     void SendResize(int grid_rows, int grid_cols);
@@ -61,8 +61,10 @@ public:
     void SendInput(int virtual_key, int flags);
     void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
                         int mouse_col);
-    static const char* GetNvimKey(int virtual_key);
+    static const char *GetNvimKey(int virtual_key);
     bool ProcessKeyDown(const char *key);
     void OpenFile(const wchar_t *file_name);
     NvimRequest GetRequestFromID(size_t id) const;
+
+    bool TryDequeue(NvimMessage *p);
 };

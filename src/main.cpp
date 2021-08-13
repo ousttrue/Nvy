@@ -192,21 +192,28 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         return 1;
     }
     renderer.Attach(hwnd);
+    nvim.Launch(cmd.nvim_command_line);
 
-    nvim.Launch(
-        cmd.nvim_command_line,
-        // call from thread
-        [hwnd, &nvim, &renderer](const mpack_tree_t *tree)
+    while (window.ProcessMessage())
+    {
+        bool exited;
+        while (true)
         {
-            if (tree == nullptr)
+            NvimMessage msg;
+            if (!nvim.TryDequeue(&msg))
             {
-                // on exit nvim
-                PostMessage(hwnd, WM_DESTROY, 0, 0);
-                return;
+                // empty
+                break;
             }
 
-            auto result =
-                MPackExtractMessageResult(const_cast<mpack_tree_t *>(tree));
+            if (!msg)
+            {
+                // exited
+                PostMessage(hwnd, WM_DESTROY, 0, 0);
+                break;
+            }
+
+            auto result = MPackExtractMessageResult(msg.get());
 
             if (result.type == MPackMessageType::Response)
             {
@@ -276,10 +283,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     renderer.Redraw(result.params);
                 }
             }
-        });
+        }
 
-    while (window.ProcessMessage())
-    {
         renderer.Flush();
     }
 

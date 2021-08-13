@@ -19,6 +19,7 @@ set(Nvy_HEADERS
 
 set(Nvy_SOURCES
     "src/main.cpp"
+    "src/win32window.cpp"
     "src/nvim/nvim.cpp"
     "src/renderer/renderer.cpp"
     "src/third_party/mpack/mpack.c"

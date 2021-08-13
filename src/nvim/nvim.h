@@ -61,7 +61,8 @@ public:
     void SendInput(int virtual_key, int flags);
     void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
                         int mouse_col);
-    bool ProcessKeyDown(int virtual_key);
+    static const char* GetNvimKey(int virtual_key);
+    bool ProcessKeyDown(const char *key);
     void OpenFile(const wchar_t *file_name);
     NvimRequest GetRequestFromID(size_t id) const;
 };

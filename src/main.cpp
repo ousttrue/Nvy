@@ -17,7 +17,6 @@ struct Context
     HWND hwnd;
     Nvim *nvim;
     Renderer *renderer;
-    bool dead_char_pending;
     bool xbuttons[2];
     GridPoint cached_cursor_grid_pos;
     WINDOWPLACEMENT saved_window_placement;
@@ -124,129 +123,6 @@ struct Context
     }
 };
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-{
-    Context *context =
-        reinterpret_cast<Context *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-    switch (msg)
-    {
-    case WM_NVIM_MESSAGE:
-    {
-        mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
-        context->ProcessMPackMessage(tree);
-    }
-        return 0;
-    case WM_RENDERER_FONT_UPDATE:
-    {
-        auto [rows, cols] = context->renderer->GridSize();
-        context->nvim->SendResize(rows, cols);
-    }
-        return 0;
-    case WM_DEADCHAR:
-    case WM_SYSDEADCHAR:
-    {
-        context->dead_char_pending = true;
-    }
-        return 0;
-    case WM_CHAR:
-    {
-        context->dead_char_pending = false;
-        // Special case for <LT>
-        if (wparam == 0x3C)
-        {
-            context->nvim->SendInput("<LT>");
-            return 0;
-        }
-        context->nvim->SendChar(static_cast<wchar_t>(wparam));
-    }
-        return 0;
-    case WM_SYSCHAR:
-    {
-        context->dead_char_pending = false;
-        context->nvim->SendSysChar(static_cast<wchar_t>(wparam));
-    }
-        return 0;
-    case WM_KEYDOWN:
-    case WM_SYSKEYDOWN:
-    {
-        // Special case for <ALT+ENTER> (fullscreen transition)
-        if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN)
-        {
-            context->ToggleFullscreen();
-        }
-        else
-        {
-            LONG msg_pos = GetMessagePos();
-            POINTS pt = MAKEPOINTS(msg_pos);
-            MSG current_msg{.hwnd = hwnd,
-                            .message = msg,
-                            .wParam = wparam,
-                            .lParam = lparam,
-                            .time = static_cast<DWORD>(GetMessageTime()),
-                            .pt = POINT{pt.x, pt.y}};
-
-            if (context->dead_char_pending)
-            {
-                if (static_cast<int>(wparam) == VK_SPACE ||
-                    static_cast<int>(wparam) == VK_BACK ||
-                    static_cast<int>(wparam) == VK_ESCAPE)
-                {
-                    context->dead_char_pending = false;
-                    TranslateMessage(&current_msg);
-                    return 0;
-                }
-            }
-
-            // If none of the special keys were hit, process in
-            // WM_CHAR
-            if (!context->nvim->ProcessKeyDown(static_cast<int>(wparam)))
-            {
-                TranslateMessage(&current_msg);
-            }
-        }
-    }
-        return 0;
-    case WM_MOUSEMOVE:
-    {
-        POINTS cursor_pos = MAKEPOINTS(lparam);
-        GridPoint grid_pos =
-            context->renderer->CursorToGridPoint(cursor_pos.x, cursor_pos.y);
-        if (context->cached_cursor_grid_pos.col != grid_pos.col ||
-            context->cached_cursor_grid_pos.row != grid_pos.row)
-        {
-            switch (wparam)
-            {
-            case MK_LBUTTON:
-            {
-                context->nvim->SendMouseInput(MouseButton::Left,
-                                              MouseAction::Drag, grid_pos.row,
-                                              grid_pos.col);
-            }
-            break;
-            case MK_MBUTTON:
-            {
-                context->nvim->SendMouseInput(MouseButton::Middle,
-                                              MouseAction::Drag, grid_pos.row,
-                                              grid_pos.col);
-            }
-            break;
-            case MK_RBUTTON:
-            {
-                context->nvim->SendMouseInput(MouseButton::Right,
-                                              MouseAction::Drag, grid_pos.row,
-                                              grid_pos.col);
-            }
-            break;
-            }
-            context->cached_cursor_grid_pos = grid_pos;
-        }
-        return 0;
-    }
-    }
-
-    return DefWindowProc(hwnd, msg, wparam, lparam);
-}
-
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
 {
@@ -271,6 +147,63 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
             case WindowEventTypes::DpiChanged:
                 renderer.SetDpiScale(event.dpi);
                 break;
+
+            case WindowEventTypes::KeyChar:
+                // Special case for <LT>
+                if (event.key == 0x3C)
+                {
+                    nvim.SendInput("<LT>");
+                }
+                else
+                {
+                    nvim.SendChar(event.key);
+                }
+                break;
+
+            case WindowEventTypes::KeySysChar:
+                nvim.SendSysChar(event.key);
+                break;
+
+            case WindowEventTypes::KeyModified:
+                nvim.ProcessKeyDown(event.modified);
+                break;
+
+            case WindowEventTypes::MouseMove:
+            {
+                auto grid_pos = renderer.CursorToGridPoint(
+                    event.cursor_pos.x, event.cursor_pos.y);
+                // if (context->cached_cursor_grid_pos.col != grid_pos.col ||
+                //     context->cached_cursor_grid_pos.row != grid_pos.row)
+                // {
+                //     switch (wparam)
+                //     {
+                //     case MK_LBUTTON:
+                //     {
+                //         context->nvim->SendMouseInput(
+                //             MouseButton::Left, MouseAction::Drag, grid_pos.row,
+                //             grid_pos.col);
+                //     }
+                //     break;
+                //     case MK_MBUTTON:
+                //     {
+                //         context->nvim->SendMouseInput(
+                //             MouseButton::Middle, MouseAction::Drag,
+                //             grid_pos.row, grid_pos.col);
+                //     }
+                //     break;
+                //     case MK_RBUTTON:
+                //     {
+                //         context->nvim->SendMouseInput(
+                //             MouseButton::Right, MouseAction::Drag, grid_pos.row,
+                //             grid_pos.col);
+                //     }
+                //     break;
+                //     }
+                //     context->cached_cursor_grid_pos = grid_pos;
+                // }
+
+                break;
+            }
 
             case WindowEventTypes::MouseLeftDown:
             {

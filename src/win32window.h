@@ -8,7 +8,10 @@ enum class WindowEventTypes
 {
     SizeChanged,
     DpiChanged,
-    FileDroped,
+    KeyChar,
+    KeySysChar,
+    KeyModified,
+    MouseMove,
     MouseLeftDown,
     MouseRightDown,
     MouseMiddleDown,
@@ -16,6 +19,7 @@ enum class WindowEventTypes
     MouseRightUp,
     MouseMiddleUp,
     MouseWheel,
+    FileDroped,
 };
 
 struct WindowEvent
@@ -37,6 +41,8 @@ struct WindowEvent
             bool should_resize_font;
         };
         POINTS cursor_pos;
+        wchar_t key;
+        const char *modified;
     };
 };
 
@@ -49,6 +55,7 @@ class Win32Window
     HWND _hwnd = nullptr;
     std::list<WindowEventCallback> _callbacks;
     UINT _saved_dpi_scaling = 0;
+    bool _dead_char_pending = false;
 
 public:
     Win32Window(HINSTANCE instance);

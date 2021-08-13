@@ -1,4 +1,5 @@
 #include "win32window.h"
+#include "nvim/nvim.h"
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam,
                                 LPARAM lparam)
@@ -135,6 +136,97 @@ LRESULT CALLBACK Win32Window::Proc(HWND hwnd, UINT msg, WPARAM wparam,
                 });
             }
         }
+        return 0;
+    }
+
+    case WM_RENDERER_FONT_UPDATE:
+    {
+        // auto [rows, cols] = context->renderer->GridSize();
+        // context->nvim->SendResize(rows, cols);
+        return 0;
+    }
+
+    case WM_DEADCHAR:
+    case WM_SYSDEADCHAR:
+    {
+        _dead_char_pending = true;
+        return 0;
+    }
+    case WM_CHAR:
+    {
+        _dead_char_pending = false;
+        RaiseEvent({
+            .type = WindowEventTypes::KeyChar,
+            .key = static_cast<wchar_t>(wparam),
+        });
+        return 0;
+    }
+    case WM_SYSCHAR:
+    {
+        _dead_char_pending = false;
+        RaiseEvent({
+            .type = WindowEventTypes::KeySysChar,
+            .key = static_cast<wchar_t>(wparam),
+        });
+        return 0;
+    }
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+    {
+        // Special case for <ALT+ENTER> (fullscreen transition)
+        if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN)
+        {
+            // context->ToggleFullscreen();
+        }
+        else
+        {
+            LONG msg_pos = GetMessagePos();
+            POINTS pt = MAKEPOINTS(msg_pos);
+            MSG current_msg{.hwnd = hwnd,
+                            .message = msg,
+                            .wParam = wparam,
+                            .lParam = lparam,
+                            .time = static_cast<DWORD>(GetMessageTime()),
+                            .pt = POINT{pt.x, pt.y}};
+
+            if (_dead_char_pending)
+            {
+                if (static_cast<int>(wparam) == VK_SPACE ||
+                    static_cast<int>(wparam) == VK_BACK ||
+                    static_cast<int>(wparam) == VK_ESCAPE)
+                {
+                    _dead_char_pending = false;
+                    TranslateMessage(&current_msg);
+                    return 0;
+                }
+            }
+
+            // If none of the special keys were hit, process in
+            // WM_CHAR
+
+            auto key = Nvim::GetNvimKey(static_cast<int>(wparam));
+            if (key)
+            {
+                RaiseEvent({
+                    .type = WindowEventTypes::KeyModified,
+                    .modified = key,
+                });
+            }
+            else
+            {
+                TranslateMessage(&current_msg);
+            }
+        }
+        return 0;
+    }
+
+    case WM_MOUSEMOVE:
+    {
+        POINTS cursor_pos = MAKEPOINTS(lparam);
+        RaiseEvent({
+            .type = WindowEventTypes::MouseMove,
+            .cursor_pos = cursor_pos,
+        });
         return 0;
     }
 

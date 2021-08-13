@@ -496,284 +496,127 @@ void Nvim::SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
     _impl->Send(data, size);
 }
 
-bool Nvim::ProcessKeyDown(int virtual_key)
+const char *Nvim::GetNvimKey(int virtual_key)
 {
-    const char *key;
     switch (virtual_key)
     {
     case VK_BACK:
-    {
-        key = "BS";
-    }
-    break;
+        return "BS";
     case VK_TAB:
-    {
-        key = "Tab";
-    }
-    break;
+        return "Tab";
     case VK_RETURN:
-    {
-        key = "CR";
-    }
-    break;
+        return "CR";
     case VK_ESCAPE:
-    {
-        key = "Esc";
-    }
-    break;
+        return "Esc";
     case VK_PRIOR:
-    {
-        key = "PageUp";
-    }
-    break;
+        return "PageUp";
     case VK_NEXT:
-    {
-        key = "PageDown";
-    }
-    break;
+        return "PageDown";
     case VK_HOME:
-    {
-        key = "Home";
-    }
-    break;
+        return "Home";
     case VK_END:
-    {
-        key = "End";
-    }
-    break;
+        return "End";
     case VK_LEFT:
-    {
-        key = "Left";
-    }
-    break;
+        return "Left";
     case VK_UP:
-    {
-        key = "Up";
-    }
-    break;
+        return "Up";
     case VK_RIGHT:
-    {
-        key = "Right";
-    }
-    break;
+        return "Right";
     case VK_DOWN:
-    {
-        key = "Down";
-    }
-    break;
+        return "Down";
     case VK_INSERT:
-    {
-        key = "Insert";
-    }
-    break;
+        return "Insert";
     case VK_DELETE:
-    {
-        key = "Del";
-    }
-    break;
+        return "Del";
     case VK_NUMPAD0:
-    {
-        key = "k0";
-    }
-    break;
+        return "k0";
     case VK_NUMPAD1:
-    {
-        key = "k1";
-    }
-    break;
+        return "k1";
     case VK_NUMPAD2:
-    {
-        key = "k2";
-    }
-    break;
+        return "k2";
     case VK_NUMPAD3:
-    {
-        key = "k3";
-    }
-    break;
+        return "k3";
     case VK_NUMPAD4:
-    {
-        key = "k4";
-    }
-    break;
+        return "k4";
     case VK_NUMPAD5:
-    {
-        key = "k5";
-    }
-    break;
+        return "k5";
     case VK_NUMPAD6:
-    {
-        key = "k6";
-    }
-    break;
+        return "k6";
     case VK_NUMPAD7:
-    {
-        key = "k7";
-    }
-    break;
+        return "k7";
     case VK_NUMPAD8:
-    {
-        key = "k8";
-    }
-    break;
+        return "k8";
     case VK_NUMPAD9:
-    {
-        key = "k9";
-    }
-    break;
+        return "k9";
     case VK_MULTIPLY:
-    {
-        key = "kMultiply";
-    }
-    break;
+        return "kMultiply";
     case VK_ADD:
-    {
-        key = "kPlus";
-    }
-    break;
+        return "kPlus";
     case VK_SEPARATOR:
-    {
-        key = "kComma";
-    }
-    break;
+        return "kComma";
     case VK_SUBTRACT:
-    {
-        key = "kMinus";
-    }
-    break;
+        return "kMinus";
     case VK_DECIMAL:
-    {
-        key = "kPoint";
-    }
-    break;
+        return "kPoint";
     case VK_DIVIDE:
-    {
-        key = "kDivide";
-    }
-    break;
+        return "kDivide";
     case VK_F1:
-    {
-        key = "F1";
-    }
-    break;
+        return "F1";
     case VK_F2:
-    {
-        key = "F2";
-    }
-    break;
+        return "F2";
     case VK_F3:
-    {
-        key = "F3";
-    }
-    break;
+        return "F3";
     case VK_F4:
-    {
-        key = "F4";
-    }
-    break;
+        return "F4";
     case VK_F5:
-    {
-        key = "F5";
-    }
-    break;
+        return "F5";
     case VK_F6:
-    {
-        key = "F6";
-    }
-    break;
+        return "F6";
     case VK_F7:
-    {
-        key = "F7";
-    }
-    break;
+        return "F7";
     case VK_F8:
-    {
-        key = "F8";
-    }
-    break;
+        return "F8";
     case VK_F9:
-    {
-        key = "F9";
-    }
-    break;
+        return "F9";
     case VK_F10:
-    {
-        key = "F10";
-    }
-    break;
+        return "F10";
     case VK_F11:
-    {
-        key = "F11";
-    }
-    break;
+        return "F11";
     case VK_F12:
-    {
-        key = "F12";
-    }
-    break;
+        return "F12";
     case VK_F13:
-    {
-        key = "F13";
-    }
-    break;
+        return "F13";
     case VK_F14:
-    {
-        key = "F14";
-    }
-    break;
+        return "F14";
     case VK_F15:
-    {
-        key = "F15";
-    }
-    break;
+        return "F15";
     case VK_F16:
-    {
-        key = "F16";
-    }
-    break;
+        return "F16";
     case VK_F17:
-    {
-        key = "F17";
-    }
-    break;
+        return "F17";
     case VK_F18:
-    {
-        key = "F18";
-    }
-    break;
+        return "F18";
     case VK_F19:
-    {
-        key = "F19";
-    }
-    break;
+        return "F19";
     case VK_F20:
-    {
-        key = "F20";
-    }
-    break;
+        return "F20";
     case VK_F21:
-    {
-        key = "F21";
-    }
-    break;
+        return "F21";
     case VK_F22:
-    {
-        key = "F22";
-    }
-    break;
+        return "F22";
     case VK_F23:
-    {
-        key = "F23";
-    }
-    break;
+        return "F23";
     case VK_F24:
-    {
-        key = "F24";
+        return "F24";
     }
-    break;
-    default:
+
+    return nullptr;
+}
+
+bool Nvim::ProcessKeyDown(const char *key)
+{
+    if (!key)
     {
-    }
         return false;
     }
 

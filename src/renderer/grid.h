@@ -71,12 +71,18 @@ class Grid
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Cursor _cursor = {0};
     std::vector<HighlightAttributes> _hl_attribs;
+    std::list<GridSizeChanged> _sizeCallbacks;
 
 public:
     Grid();
     ~Grid();
     Grid(const Grid &) = delete;
     Grid &operator=(const Grid &) = delete;
+
+    void OnSizeChanged(const GridSizeChanged &callback)
+    {
+        _sizeCallbacks.push_back(callback);
+    }
 
     int Rows() const
     {

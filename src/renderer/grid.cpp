@@ -22,6 +22,11 @@ void Grid::Resize(const GridSize &size)
         std::fill(_grid_chars.begin(), _grid_chars.end(), L' ');
 
         _grid_cell_properties.resize(count);
+
+        for (auto &callback : _sizeCallbacks)
+        {
+            callback(size);
+        }
     }
 }
 

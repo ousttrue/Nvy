@@ -793,6 +793,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
     Nvim nvim(cmd.nvim_command_line, hwnd);
     context.nvim = &nvim;
+    context._grid.OnSizeChanged([&nvim](const GridSize &size)
+    {
+        nvim.SendResize(size.rows, size.cols);
+    });
     context.hwnd = hwnd;
     RECT window_rect;
     DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,

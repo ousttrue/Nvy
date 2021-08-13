@@ -5,14 +5,10 @@ target_sources(Nvy PUBLIC
 "nvim.cpp"
 "renderer.cpp"
 "grid.cpp"
-"third_party/mpack/mpack.c"
-)
-
-target_include_directories(Nvy PUBLIC
-    "src/"
 )
 
 target_link_libraries(Nvy PUBLIC 
+    mpack
     user32.lib 
     d3d11.lib 
     d2d1.lib 
@@ -21,35 +17,8 @@ target_link_libraries(Nvy PUBLIC
     Dwmapi.lib
 )
 
-# target_precompile_headers(Nvy PUBLIC
-#     <cassert>
-#     <cmath>
-#     <cstdint>
-#     <cstdio>
-#     <windows.h>
-#     <d3d11_4.h>
-#     <d2d1_3.h>
-#     <d2d1_3helper.h>
-#     <dwrite_3.h>
-#     <shellscalingapi.h>
-#     <dwmapi.h>
-    
-#     "src/third_party/mpack/mpack.h"
-
-#     "src/common/dx_helper.h"
-#     "src/common/mpack_helper.h"
-#     "src/common/vec.h"
-#     "src/common/window_messages.h"
-# )
-
 target_compile_definitions(Nvy PUBLIC
-    MPACK_EXTENSIONS
     UNICODE
-)
-
-set_source_files_properties("third_party/mpack/mpack.c" PROPERTIES 
-    SKIP_PRECOMPILE_HEADERS ON
-    COMPILE_FLAGS -D_CRT_SECURE_NO_WARNINGS
 )
 
 if(MSVC)

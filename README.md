@@ -16,3 +16,9 @@
 <https://neovim.io/doc/user/api.html>
 
 `> nvim --embed`
+
+## initialize sequence
+
+* WindowSize
+* FontSize
+* GridSize => Nvim

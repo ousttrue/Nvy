@@ -92,6 +92,7 @@ class Renderer
     bool _disable_ligatures = false;
     float _linespace_factor = 0;
 
+    std::unique_ptr<class GridImpl> _grid;
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
@@ -103,10 +104,6 @@ class Renderer
     Vec<HighlightAttributes> _hl_attribs;
 
     D2D1_SIZE_U _pixel_size = {0};
-    int _grid_rows = 0;
-    int _grid_cols = 0;
-    wchar_t *_grid_chars = nullptr;
-    CellProperty *_grid_cell_properties = nullptr;
 
     HWND _hwnd = nullptr;
     bool _draw_active = false;
@@ -126,9 +123,9 @@ public:
     PixelSize GridToPixelSize(int rows, int cols);
     GridSize PixelsToGridSize(int width, int height);
     GridPoint CursorToGridPoint(int x, int y);
-    GridSize GridSize();
+    GridSize GetGridSize();
     void SetDpiScale(float current_dpi);
-    bool ResizeFont(float size, int *pRows, int *pCols);
+    void ResizeFont(float size);
     HRESULT
     DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
                  DWRITE_MEASURING_MODE measuring_mode,

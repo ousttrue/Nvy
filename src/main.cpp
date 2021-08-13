@@ -150,12 +150,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
                 if (event.should_resize_font)
                 {
-                    int rows, cols;
-                    if (renderer.ResizeFont(event.scroll_amount * 2.0f, &rows,
-                                            &cols))
-                    {
-                        nvim.SendResize(rows, cols);
-                    }
+                    renderer.ResizeFont(event.scroll_amount * 2.0f);
                 }
                 else
                 {
@@ -234,14 +229,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                 break;
                 case NvimRequest::nvim_eval:
                 {
-                    Vec<char> guifont_buffer;
-                    nvim.ParseConfig(result.params, &guifont_buffer);
+                    // ginit.vim ?
 
-                    if (!guifont_buffer.empty())
-                    {
-                        renderer.UpdateGuiFont(guifont_buffer.data(),
-                                               strlen(guifont_buffer.data()));
-                    }
+                    // Vec<char> guifont_buffer;
+                    // nvim.ParseConfig(result.params, &guifont_buffer);
+
+                    // if (!guifont_buffer.empty())
+                    // {
+                    //     renderer.UpdateGuiFont(guifont_buffer.data(),
+                    //                            strlen(guifont_buffer.data()));
+                    // }
 
                     // if (start_grid_size.rows != 0 && start_grid_size.cols !=
                     // 0)
@@ -258,14 +255,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     // Attach the renderer now that the window size is
                     // determined
                     // renderer->Attach();
-                    auto [rows, cols] = renderer.GridSize();
-                    nvim.SendUIAttach(rows, cols);
+                    // auto [rows, cols] = renderer.GridSize();
+                    // nvim.SendUIAttach(rows, cols);
 
                     // if (start_maximized)
                     // {
                     //     ToggleFullscreen();
                     // }
-                    ShowWindow(hwnd, SW_SHOWDEFAULT);
+                    // ShowWindow(hwnd, SW_SHOWDEFAULT);
                 }
                 break;
                 case NvimRequest::nvim_input:
@@ -284,8 +281,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                 }
             }
         }
-
-        renderer.Flush();
     }
 
     return 0;

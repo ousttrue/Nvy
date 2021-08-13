@@ -148,7 +148,7 @@ public:
     {
         return _cursor.row * _size.cols + _cursor.col;
     }
-    int CursorModeHighlightAttribute()
+    int CursorModeHighlightAttribute() const
     {
         return this->_cursor.mode_info->hl_attrib_id;
     }

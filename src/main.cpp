@@ -204,9 +204,9 @@ struct Context
             {
                 if (!this->_ui_busy)
                 {
-                    renderer->DrawCursor();
+                    renderer->DrawCursor(&_grid);
                 }
-                renderer->DrawBorderRectangles();
+                renderer->DrawBorderRectangles(&_grid);
                 renderer->FinishDraw();
             }
         }

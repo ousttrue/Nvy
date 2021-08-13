@@ -735,9 +735,9 @@ D2D1_RECT_F Renderer::GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect)
     return cursor_bg_rect;
 }
 
-void Renderer::DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text,
+void Renderer::DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
                                    uint32_t length,
-                                   HighlightAttributes *hl_attribs)
+                                   const HighlightAttributes *hl_attribs)
 {
     auto text_layout = _dwrite->GetTextLayout(rect, text, length);
     this->ApplyHighlightAttributes(hl_attribs, text_layout.Get(), 0, 1);
@@ -835,46 +835,46 @@ void Renderer::DrawGridLine(const Grid* grid, int row)
     _device->_d2d_context->PopAxisAlignedClip();
 }
 
-void Renderer::DrawCursor()
+void Renderer::DrawCursor(const Grid *grid)
 {
-    int cursor_grid_offset = _grid->CursorOffset();
+    int cursor_grid_offset = grid->CursorOffset();
 
     int double_width_char_factor = 1;
-    if (cursor_grid_offset < _grid->Count() &&
-        _grid->Props()[cursor_grid_offset].is_wide_char)
+    if (cursor_grid_offset < grid->Count() &&
+        grid->Props()[cursor_grid_offset].is_wide_char)
     {
         double_width_char_factor += 1;
     }
 
-    HighlightAttributes cursor_hl_attribs =
-        _grid->GetHighlightAttributes()[_grid->CursorModeHighlightAttribute()];
-    if (_grid->CursorModeHighlightAttribute() == 0)
+    auto cursor_hl_attribs =
+        grid->GetHighlightAttributes()[grid->CursorModeHighlightAttribute()];
+    if (grid->CursorModeHighlightAttribute() == 0)
     {
         cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
     }
 
     D2D1_RECT_F cursor_rect{
-        .left = _grid->CursorCol() * _dwrite->_font_width,
-        .top = _grid->CursorRow() * _dwrite->_font_height,
-        .right = _grid->CursorCol() * _dwrite->_font_width +
+        .left = grid->CursorCol() * _dwrite->_font_width,
+        .top = grid->CursorRow() * _dwrite->_font_height,
+        .right = grid->CursorCol() * _dwrite->_font_width +
                  _dwrite->_font_width * double_width_char_factor,
-        .bottom = (_grid->CursorRow() * _dwrite->_font_height) +
+        .bottom = (grid->CursorRow() * _dwrite->_font_height) +
                   _dwrite->_font_height};
     D2D1_RECT_F cursor_fg_rect = this->GetCursorForegroundRect(cursor_rect);
     this->DrawBackgroundRect(cursor_fg_rect, &cursor_hl_attribs);
 
-    if (_grid->GetCursorShape() == CursorShape::Block)
+    if (grid->GetCursorShape() == CursorShape::Block)
     {
         this->DrawHighlightedText(cursor_fg_rect,
-                                  &_grid->Chars()[cursor_grid_offset],
+                                  &grid->Chars()[cursor_grid_offset],
                                   double_width_char_factor, &cursor_hl_attribs);
     }
 }
 
-void Renderer::DrawBorderRectangles()
+void Renderer::DrawBorderRectangles(const Grid* grid)
 {
-    float left_border = _dwrite->_font_width * _grid->Cols();
-    float top_border = _dwrite->_font_height * _grid->Rows();
+    float left_border = _dwrite->_font_width * grid->Cols();
+    float top_border = _dwrite->_font_height * grid->Rows();
 
     if (left_border != static_cast<float>(this->_pixel_size.width))
     {
@@ -884,7 +884,7 @@ void Renderer::DrawBorderRectangles()
             .right = static_cast<float>(this->_pixel_size.width),
             .bottom = static_cast<float>(this->_pixel_size.height)};
         this->DrawBackgroundRect(vertical_rect,
-                                 &_grid->GetHighlightAttributes()[0]);
+                                 &grid->GetHighlightAttributes()[0]);
     }
 
     if (top_border != static_cast<float>(this->_pixel_size.height))
@@ -895,7 +895,7 @@ void Renderer::DrawBorderRectangles()
             .right = static_cast<float>(this->_pixel_size.width),
             .bottom = static_cast<float>(this->_pixel_size.height)};
         this->DrawBackgroundRect(horizontal_rect,
-                                 &_grid->GetHighlightAttributes()[0]);
+                                 &grid->GetHighlightAttributes()[0]);
     }
 }
 

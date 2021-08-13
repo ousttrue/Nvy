@@ -67,12 +67,14 @@ public:
                                   IDWriteTextLayout *text_layout, int start,
                                   int end);
     D2D1_RECT_F GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect);
-    void DrawBackgroundRect(D2D1_RECT_F rect, const HighlightAttributes *hl_attribs);
-    void DrawHighlightedText(D2D1_RECT_F rect, wchar_t *text, uint32_t length,
-                             HighlightAttributes *hl_attribs);
-    void DrawGridLine(const Grid* grid, int row);
-    void DrawCursor();
-    void DrawBorderRectangles();
+    void DrawBackgroundRect(D2D1_RECT_F rect,
+                            const HighlightAttributes *hl_attribs);
+    void DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
+                             uint32_t length,
+                             const HighlightAttributes *hl_attribs);
+    void DrawGridLine(const Grid *grid, int row);
+    void DrawCursor(const Grid *grid);
+    void DrawBorderRectangles(const Grid *grid);
     void DrawBackgroundRect();
     void StartDraw();
     void FinishDraw();

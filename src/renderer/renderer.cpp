@@ -635,7 +635,7 @@ Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
                    float monitor_dpi)
     : _dwrite(
           DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
-      _grid(new GridImpl)
+      _grid(new Grid)
 {
     this->_hwnd = hwnd;
     this->HandleDeviceLost();

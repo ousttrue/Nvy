@@ -1,11 +1,11 @@
 #include "grid.h"
 
-GridImpl::GridImpl()
+Grid::Grid()
 {
     this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 }
 
-void GridImpl::Resize(int rows, int cols)
+void Grid::Resize(int rows, int cols)
 {
     if (rows != _grid_rows || cols != _grid_cols)
     {
@@ -22,7 +22,7 @@ void GridImpl::Resize(int rows, int cols)
     }
 }
 
-void GridImpl::LineCopy(int left, int right, int src_row, int dst_row)
+void Grid::LineCopy(int left, int right, int src_row, int dst_row)
 {
     memcpy(&this->_grid_chars[dst_row * this->_grid_cols + left],
            &this->_grid_chars[src_row * this->_grid_cols + left],
@@ -33,7 +33,7 @@ void GridImpl::LineCopy(int left, int right, int src_row, int dst_row)
            (right - left) * sizeof(CellProperty));
 }
 
-void GridImpl::Clear()
+void Grid::Clear()
 {
     // Initialize all grid character to a space.
     for (int i = 0; i < this->_grid_cols * this->_grid_rows; ++i)
@@ -44,7 +44,7 @@ void GridImpl::Clear()
            this->_grid_cols * this->_grid_rows * sizeof(CellProperty));
 }
 
-uint32_t GridImpl::CreateForegroundColor(HighlightAttributes *hl_attribs)
+uint32_t Grid::CreateForegroundColor(HighlightAttributes *hl_attribs)
 {
     if (hl_attribs->flags & HL_ATTRIB_REVERSE)
     {
@@ -60,7 +60,7 @@ uint32_t GridImpl::CreateForegroundColor(HighlightAttributes *hl_attribs)
     }
 }
 
-uint32_t GridImpl::CreateBackgroundColor(HighlightAttributes *hl_attribs)
+uint32_t Grid::CreateBackgroundColor(HighlightAttributes *hl_attribs)
 {
     if (hl_attribs->flags & HL_ATTRIB_REVERSE)
     {
@@ -76,7 +76,7 @@ uint32_t GridImpl::CreateBackgroundColor(HighlightAttributes *hl_attribs)
     }
 }
 
-uint32_t GridImpl::CreateSpecialColor(HighlightAttributes *hl_attribs)
+uint32_t Grid::CreateSpecialColor(HighlightAttributes *hl_attribs)
 {
     return hl_attribs->special == DEFAULT_COLOR ? this->_hl_attribs[0].special
                                                 : hl_attribs->special;

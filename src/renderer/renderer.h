@@ -30,7 +30,7 @@ class Renderer
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
     std::unique_ptr<class DWriteImpl> _dwrite;
-    std::unique_ptr<class GridImpl> _grid;
+    std::unique_ptr<class Grid> _grid;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
     D2D1_SIZE_U _pixel_size = {0};

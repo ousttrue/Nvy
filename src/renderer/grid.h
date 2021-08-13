@@ -49,7 +49,7 @@ struct HighlightAttributes
     uint16_t flags;
 };
 
-class GridImpl
+class Grid
 {
     int _grid_rows = 0;
     int _grid_cols = 0;
@@ -60,7 +60,7 @@ class GridImpl
     std::vector<HighlightAttributes> _hl_attribs;
 
 public:
-    GridImpl();
+    Grid();
 
     int Rows() const
     {

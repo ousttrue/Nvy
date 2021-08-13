@@ -1,5 +1,7 @@
 #include "renderer.h"
+#include "third_party/mpack/mpack.h"
 #include <functional>
+#include <stdint.h>
 #include <tuple>
 using namespace Microsoft::WRL;
 
@@ -690,6 +692,45 @@ public:
     }
 };
 
+///
+/// Renderer
+///
+Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
+                   uint32_t monitor_dpi, const RendererEventCallback &callback)
+    : _hwnd(hwnd), _grid(new GridImpl),
+      _dwrite(
+          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi))
+
+{
+    _callbacks.push_back(callback);
+
+    this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
+
+    HandleDeviceLost();
+
+    RECT client_rect;
+    GetClientRect(this->_hwnd, &client_rect);
+    _pixel_size.width =
+        static_cast<uint32_t>(client_rect.right - client_rect.left);
+    _pixel_size.height =
+        static_cast<uint32_t>(client_rect.bottom - client_rect.top);
+
+    auto gridSizeChanged = [self = this](const GridSize &size)
+    {
+        self->RaiseEvent({
+            .type = RendererEventTypes::GridSizeChanged,
+            .gridSize = size,
+        });
+    };
+    _grid->AddOnGridSizeChanged(gridSizeChanged);
+    auto [rows, cols] = GetGridSize();
+    _grid->Resize(rows, cols);
+}
+
+Renderer::~Renderer()
+{
+}
+
 void Renderer::InitializeWindowDependentResources()
 {
     if (this->_swapchain)
@@ -737,40 +778,6 @@ void Renderer::HandleDeviceLost()
     _device = DeviceImpl::Create();
     this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
                      static_cast<int>(strlen(DEFAULT_FONT)));
-}
-
-Renderer::Renderer(bool disable_ligatures, float linespace_factor)
-    : _disable_ligatures(disable_ligatures),
-      _linespace_factor(linespace_factor), _grid(new GridImpl)
-{
-    this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
-
-    auto callback = [self = this](const GridSize &size)
-    {
-        self->RaiseEvent({
-            .type = RendererEventTypes::GridSizeChanged,
-            .gridSize = size,
-        });
-    };
-
-    _grid->AddOnGridSizeChanged(callback);
-}
-
-Renderer::~Renderer()
-{
-}
-
-void Renderer::Attach(HWND hwnd)
-{
-    this->_hwnd = hwnd;
-    HandleDeviceLost();
-
-    RECT client_rect;
-    GetClientRect(this->_hwnd, &client_rect);
-    _pixel_size.width =
-        static_cast<uint32_t>(client_rect.right - client_rect.left);
-    _pixel_size.height =
-        static_cast<uint32_t>(client_rect.bottom - client_rect.top);
 }
 
 void Renderer::Resize(uint32_t width, uint32_t height)
@@ -1443,6 +1450,7 @@ void Renderer::Redraw(mpack_node_t params)
         mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
         mpack_node_t redraw_command_name =
             mpack_node_array_at(redraw_command_arr, 0);
+        auto name = mpack_node_str(redraw_command_name);
 
         if (MPackMatchString(redraw_command_name, "option_set"))
         {
@@ -1512,10 +1520,15 @@ void Renderer::Redraw(mpack_node_t params)
         {
             if (!this->_ui_busy)
             {
-                this->DrawCursor();
+                // this->DrawCursor();
             }
             this->DrawBorderRectangles();
             this->FinishDraw();
+        }
+        else
+        {
+            // unknown
+            // assert(false);
         }
     }
 }
@@ -1550,17 +1563,9 @@ GridSize Renderer::GetGridSize()
     return PixelsToGridSize(_pixel_size.width, _pixel_size.height);
 }
 
-void Renderer::SetDpiScale(float monitor_dpi)
+void Renderer::SetDpiScale(uint32_t monitor_dpi)
 {
-    if (!_dwrite)
-    {
-        _dwrite = DWriteImpl::Create(this->_disable_ligatures,
-                                     this->_linespace_factor, monitor_dpi);
-    }
-    else
-    {
-        _dwrite->SetDpiScale(monitor_dpi);
-    }
+    _dwrite->SetDpiScale(monitor_dpi);
     auto [rows, cols] = GetGridSize();
     _grid->Resize(rows, cols);
 }
@@ -1738,11 +1743,6 @@ void Renderer::Flush()
 {
     InitializeWindowDependentResources();
     _swapchain->Present();
-}
-
-void Renderer::OnEvent(const RendererEventCallback &callback)
-{
-    _callbacks.push_back(callback);
 }
 
 void Renderer::RaiseEvent(const RendererEvent &event)

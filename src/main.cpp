@@ -15,8 +15,29 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     auto cmd = CommandLine::Get();
 
     Win32Window window(instance);
-    Renderer renderer(cmd.disable_ligatures, cmd.linespace_factor);
+    auto hwnd = window.Create(WINDOW_CLASS, WINDOW_TITLE);
+    if (!hwnd)
+    {
+        return 1;
+    }
+
+    // launch
     Nvim nvim;
+    nvim.Launch(cmd.nvim_command_line);
+
+    HMONITOR monitor;
+    auto dpi = window.GetDpi(&monitor);
+    Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor, dpi,
+                      [&nvim](const RendererEvent &event)
+                      {
+                          switch (event.type)
+                          {
+                          case RendererEventTypes::GridSizeChanged:
+                              nvim.SendResize(event.gridSize.rows,
+                                              event.gridSize.cols);
+                              break;
+                          }
+                      });
 
     // connect event
     window.OnEvent(
@@ -169,26 +190,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
             }
         });
 
-    renderer.OnEvent(
-        [&nvim](const RendererEvent &event)
-        {
-            switch (event.type)
-            {
-            case RendererEventTypes::GridSizeChanged:
-                nvim.SendResize(event.gridSize.rows, event.gridSize.cols);
-                break;
-            }
-        });
-
-    // launch
-    auto hwnd = window.Create(WINDOW_CLASS, WINDOW_TITLE);
-    if (!hwnd)
-    {
-        return 1;
-    }
-    renderer.Attach(hwnd);
-    nvim.Launch(cmd.nvim_command_line);
-
     while (window.ProcessMessage())
     {
         bool exited;
@@ -225,14 +226,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                         mpack_node_map_cstr(version_map, "api_level")
                             .data->value.i;
                     assert(api_level > 6);
+                    break;
                 }
-                break;
+
                 case NvimRequest::nvim_eval:
                 {
                     // ginit.vim ?
 
-                    // Vec<char> guifont_buffer;
-                    // nvim.ParseConfig(result.params, &guifont_buffer);
+                    Vec<char> guifont_buffer;
+                    nvim.ParseConfig(result.params, &guifont_buffer);
 
                     // if (!guifont_buffer.empty())
                     // {
@@ -255,22 +257,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     // Attach the renderer now that the window size is
                     // determined
                     // renderer->Attach();
-                    // auto [rows, cols] = renderer.GridSize();
-                    // nvim.SendUIAttach(rows, cols);
+                    auto [rows, cols] = renderer.GetGridSize();
+                    nvim.SendUIAttach(rows, cols);
 
                     // if (start_maximized)
                     // {
                     //     ToggleFullscreen();
                     // }
-                    // ShowWindow(hwnd, SW_SHOWDEFAULT);
+                    ShowWindow(hwnd, SW_SHOWDEFAULT);
+                    break;
                 }
-                break;
+
                 case NvimRequest::nvim_input:
                 case NvimRequest::nvim_input_mouse:
                 case NvimRequest::nvim_command:
                 {
+                    break;
                 }
-                break;
                 }
             }
             else if (result.type == MPackMessageType::Notification)

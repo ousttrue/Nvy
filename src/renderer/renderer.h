@@ -1,8 +1,10 @@
 #pragma once
+#include <stdint.h>
 #include <wrl/client.h>
 #include <memory>
 #include <functional>
 #include <list>
+#include <vector>
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
@@ -89,9 +91,6 @@ using RendererEventCallback = std::function<void(const RendererEvent &)>;
 
 class Renderer
 {
-    bool _disable_ligatures = false;
-    float _linespace_factor = 0;
-
     std::unique_ptr<class GridImpl> _grid;
     std::unique_ptr<class DeviceImpl> _device;
     std::unique_ptr<class SwapchainImpl> _swapchain;
@@ -99,9 +98,9 @@ class Renderer
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
-    Cursor _cursor = {0};
+    Cursor _cursor = {};
 
-    Vec<HighlightAttributes> _hl_attribs;
+    std::vector<HighlightAttributes> _hl_attribs;
 
     D2D1_SIZE_U _pixel_size = {0};
 
@@ -112,10 +111,10 @@ class Renderer
     std::list<RendererEventCallback> _callbacks;
 
 public:
-    Renderer(bool disable_ligatures, float linespace_factor);
+    Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
+             uint32_t monitor_dpi, const RendererEventCallback &callback);
     ~Renderer();
 
-    void Attach(HWND hwnd);
     void Resize(uint32_t width, uint32_t height);
     void UpdateGuiFont(const char *guifont, size_t strlen);
     void UpdateFont(float font_size, const char *font_string, int strlen);
@@ -124,7 +123,7 @@ public:
     GridSize PixelsToGridSize(int width, int height);
     GridPoint CursorToGridPoint(int x, int y);
     GridSize GetGridSize();
-    void SetDpiScale(float current_dpi);
+    void SetDpiScale(uint32_t monitor_dpi);
     void ResizeFont(float size);
     HRESULT
     DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
@@ -138,8 +137,6 @@ public:
     HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
     void Flush();
-
-    void OnEvent(const RendererEventCallback &callback);
 
 private:
     void RaiseEvent(const RendererEvent &event);

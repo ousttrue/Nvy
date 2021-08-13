@@ -2,6 +2,7 @@
 #include <string>
 #include <list>
 #include <functional>
+#include <stdint.h>
 #include <string>
 
 enum class WindowEventTypes
@@ -65,6 +66,7 @@ public:
     LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
     bool ProcessMessage();
     void ToggleFullscreen();
+    uint32_t GetDpi(HMONITOR *monitor) const;
     void OnEvent(const std::function<void(const WindowEvent &)> &callback);
 
 private:

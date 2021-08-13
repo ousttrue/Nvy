@@ -1,5 +1,6 @@
 #include "win32window.h"
 #include "nvim/nvim.h"
+#include <stdint.h>
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam,
                                 LPARAM lparam)
@@ -59,7 +60,7 @@ HWND Win32Window::Create(const wchar_t *window_class_name,
     {
         return nullptr;
     }
-    ShowWindow(_hwnd, SW_SHOWDEFAULT);
+    // ShowWindow(_hwnd, SW_SHOWDEFAULT);
 
     return _hwnd;
 }
@@ -90,19 +91,13 @@ LRESULT CALLBACK Win32Window::Proc(HWND hwnd, UINT msg, WPARAM wparam,
 
     case WM_MOVE:
     {
-        RECT window_rect;
-        DwmGetWindowAttribute(
-            hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
-            sizeof(RECT)); // Get window position without shadows
-        HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
-                                            MONITOR_DEFAULTTONEAREST);
-        UINT current_dpi = 0;
-        GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi,
-                         &current_dpi);
+        HMONITOR monitor;
+        auto current_dpi = GetDpi(&monitor);
         if (current_dpi != _saved_dpi_scaling)
         {
             float dpi_scale = static_cast<float>(current_dpi) /
                               static_cast<float>(_saved_dpi_scaling);
+            RECT window_rect;
             GetWindowRect(hwnd,
                           &window_rect); // Window RECT with shadows
             int new_window_width =
@@ -385,6 +380,18 @@ void Win32Window::ToggleFullscreen()
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                          SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
+}
+
+uint32_t Win32Window::GetDpi(HMONITOR *monitor) const
+{
+    RECT window_rect;
+    DwmGetWindowAttribute(_hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
+                          sizeof(RECT)); // Get window position without shadows
+    *monitor = MonitorFromPoint({window_rect.left, window_rect.top},
+                                MONITOR_DEFAULTTONEAREST);
+    UINT current_dpi = 0;
+    GetDpiForMonitor(*monitor, MDT_EFFECTIVE_DPI, &current_dpi, &current_dpi);
+    return current_dpi;
 }
 
 void Win32Window::OnEvent(

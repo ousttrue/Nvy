@@ -312,43 +312,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
     }
         return 0;
-    case WM_MOUSEWHEEL:
-    {
-        bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-
-        POINTS screen_point = MAKEPOINTS(lparam);
-        POINT client_point{
-            .x = static_cast<LONG>(screen_point.x),
-            .y = static_cast<LONG>(screen_point.y),
-        };
-        ScreenToClient(hwnd, &client_point);
-
-        short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
-        short scroll_amount = wheel_distance / WHEEL_DELTA;
-        auto [row, col] = context->renderer->CursorToGridPoint(client_point.x,
-                                                               client_point.y);
-        MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp
-                                               : MouseAction::MouseWheelDown;
-
-        if (should_resize_font)
-        {
-            int rows, cols;
-            if (context->renderer->ResizeFont(scroll_amount * 2.0f, &rows,
-                                              &cols))
-            {
-                context->nvim->SendResize(rows, cols);
-            }
-        }
-        else
-        {
-            for (int i = 0; i < abs(scroll_amount); ++i)
-            {
-                context->nvim->SendMouseInput(MouseButton::Wheel, action, row,
-                                              col);
-            }
-        }
-    }
-        return 0;
     }
 
     return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -378,6 +341,34 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
             case WindowEventTypes::DpiChanged:
                 renderer.SetDpiScale(event.dpi);
                 break;
+
+            case WindowEventTypes::MouseWheel:
+            {
+                auto [row, col] = renderer.CursorToGridPoint(
+                    event.client_point.x, event.client_point.y);
+                MouseAction action = event.scroll_amount > 0
+                                         ? MouseAction::MouseWheelUp
+                                         : MouseAction::MouseWheelDown;
+
+                if (event.should_resize_font)
+                {
+                    int rows, cols;
+                    if (renderer.ResizeFont(event.scroll_amount * 2.0f, &rows,
+                                            &cols))
+                    {
+                        nvim.SendResize(rows, cols);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < abs(event.scroll_amount); ++i)
+                    {
+                        nvim.SendMouseInput(MouseButton::Wheel, action, row,
+                                            col);
+                    }
+                }
+                break;
+            }
 
             case WindowEventTypes::FileDroped:
                 nvim.OpenFile(event.path);

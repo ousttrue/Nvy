@@ -138,6 +138,29 @@ LRESULT CALLBACK Win32Window::Proc(HWND hwnd, UINT msg, WPARAM wparam,
         return 0;
     }
 
+    case WM_MOUSEWHEEL:
+    {
+        bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+
+        POINTS screen_point = MAKEPOINTS(lparam);
+        POINT client_point{
+            .x = static_cast<LONG>(screen_point.x),
+            .y = static_cast<LONG>(screen_point.y),
+        };
+        ScreenToClient(hwnd, &client_point);
+
+        short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
+        short scroll_amount = wheel_distance / WHEEL_DELTA;
+
+        RaiseEvent({
+            .type = WindowEventTypes::MouseWheel,
+            .scroll_amount = scroll_amount,
+            .should_resize_font = should_resize_font,
+            .client_point = client_point,
+        });
+        return 0;
+    }
+
     case WM_DROPFILES:
     {
         wchar_t file_to_open[MAX_PATH];

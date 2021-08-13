@@ -132,7 +132,7 @@ struct Context
 
             if (MPackMatchString(redraw_command_name, "option_set"))
             {
-                renderer->SetGuiOptions(redraw_command_arr);
+                SetGuiOptions(redraw_command_arr);
             }
             if (MPackMatchString(redraw_command_name, "grid_resize"))
             {
@@ -140,7 +140,8 @@ struct Context
             }
             if (MPackMatchString(redraw_command_name, "grid_clear"))
             {
-                renderer->ClearGrid();
+                _grid.Clear();
+                renderer->DrawBackgroundRect();
             }
             else if (MPackMatchString(redraw_command_name,
                                       "default_colors_set"))
@@ -153,7 +154,7 @@ struct Context
             }
             else if (MPackMatchString(redraw_command_name, "grid_line"))
             {
-                renderer->DrawGridLines(redraw_command_arr);
+                DrawGridLines(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "grid_cursor_goto"))
             {
@@ -193,7 +194,7 @@ struct Context
             }
             else if (MPackMatchString(redraw_command_name, "grid_scroll"))
             {
-                renderer->ScrollRegion(redraw_command_arr);
+                ScrollRegion(redraw_command_arr);
             }
             else if (MPackMatchString(redraw_command_name, "flush"))
             {
@@ -203,6 +204,28 @@ struct Context
                 }
                 renderer->DrawBorderRectangles();
                 renderer->FinishDraw();
+            }
+        }
+    }
+
+    void SetGuiOptions(mpack_node_t option_set)
+    {
+        uint64_t option_set_length = mpack_node_array_length(option_set);
+
+        for (uint64_t i = 1; i < option_set_length; ++i)
+        {
+            mpack_node_t name =
+                mpack_node_array_at(mpack_node_array_at(option_set, i), 0);
+            mpack_node_t value =
+                mpack_node_array_at(mpack_node_array_at(option_set, i), 1);
+            if (MPackMatchString(name, "guifont"))
+            {
+                const char *font_str = mpack_node_str(value);
+                size_t strlen = mpack_node_strlen(value);
+                renderer->UpdateGuiFont(font_str, strlen);
+
+                // Send message to window in order to update nvim row/col count
+                PostMessage(hwnd, WM_RENDERER_FONT_UPDATE, 0, 0);
             }
         }
     }
@@ -355,6 +378,160 @@ struct Context
             SetFlag("strikethrough", HL_ATTRIB_STRIKETHROUGH);
             SetFlag("underline", HL_ATTRIB_UNDERLINE);
             SetFlag("undercurl", HL_ATTRIB_UNDERCURL);
+        }
+    }
+
+    void DrawGridLines(mpack_node_t grid_lines)
+    {
+        int grid_size = _grid.Count();
+        size_t line_count = mpack_node_array_length(grid_lines);
+        for (size_t i = 1; i < line_count; ++i)
+        {
+            mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
+
+            int row = MPackIntFromArray(grid_line, 1);
+            int col_start = MPackIntFromArray(grid_line, 2);
+
+            mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
+            size_t cells_array_length = mpack_node_array_length(cells_array);
+
+            int col_offset = col_start;
+            int hl_attrib_id = 0;
+            for (size_t j = 0; j < cells_array_length; ++j)
+            {
+
+                mpack_node_t cells = mpack_node_array_at(cells_array, j);
+                size_t cells_length = mpack_node_array_length(cells);
+
+                mpack_node_t text = mpack_node_array_at(cells, 0);
+                const char *str = mpack_node_str(text);
+
+                int strlen = static_cast<int>(mpack_node_strlen(text));
+
+                if (cells_length > 1)
+                {
+                    hl_attrib_id = MPackIntFromArray(cells, 1);
+                }
+
+                // Right part of double-width char is the empty string, thus
+                // if the next cell array contains the empty string, we can
+                // process the current string as a double-width char and proceed
+                if (j < (cells_array_length - 1) &&
+                    mpack_node_strlen(mpack_node_array_at(
+                        mpack_node_array_at(cells_array, j + 1), 0)) == 0)
+                {
+
+                    int offset = row * _grid.Cols() + col_offset;
+                    _grid.Props()[offset].is_wide_char = true;
+                    _grid.Props()[offset].hl_attrib_id = hl_attrib_id;
+                    _grid.Props()[offset + 1].hl_attrib_id = hl_attrib_id;
+
+                    int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
+                                                      &_grid.Chars()[offset],
+                                                      grid_size - offset);
+                    assert(wstrlen == 1 || wstrlen == 2);
+
+                    if (wstrlen == 1)
+                    {
+                        _grid.Chars()[offset + 1] = L'\0';
+                    }
+
+                    col_offset += 2;
+                    continue;
+                }
+
+                if (strlen == 0)
+                {
+                    continue;
+                }
+
+                int repeat = 1;
+                if (cells_length > 2)
+                {
+                    repeat = MPackIntFromArray(cells, 2);
+                }
+
+                int offset = row * _grid.Cols() + col_offset;
+                int wstrlen = 0;
+                for (int k = 0; k < repeat; ++k)
+                {
+                    int idx = offset + (k * wstrlen);
+                    wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
+                                                  &_grid.Chars()[idx],
+                                                  grid_size - idx);
+                }
+
+                int wstrlen_with_repetitions = wstrlen * repeat;
+                for (int k = 0; k < wstrlen_with_repetitions; ++k)
+                {
+                    _grid.Props()[offset + k].hl_attrib_id = hl_attrib_id;
+                    _grid.Props()[offset + k].is_wide_char = false;
+                }
+
+                col_offset += wstrlen_with_repetitions;
+            }
+
+            renderer->DrawGridLine(row);
+        }
+    }
+
+    void ScrollRegion(mpack_node_t scroll_region)
+    {
+        mpack_node_t scroll_region_params =
+            mpack_node_array_at(scroll_region, 1);
+
+        int64_t top =
+            mpack_node_array_at(scroll_region_params, 1).data->value.i;
+        int64_t bottom =
+            mpack_node_array_at(scroll_region_params, 2).data->value.i;
+        int64_t left =
+            mpack_node_array_at(scroll_region_params, 3).data->value.i;
+        int64_t right =
+            mpack_node_array_at(scroll_region_params, 4).data->value.i;
+        int64_t rows =
+            mpack_node_array_at(scroll_region_params, 5).data->value.i;
+        int64_t cols =
+            mpack_node_array_at(scroll_region_params, 6).data->value.i;
+
+        // Currently nvim does not support horizontal scrolling,
+        // the parameter is reserved for later use
+        assert(cols == 0);
+
+        // This part is slightly cryptic, basically we're just
+        // iterating from top to bottom or vice versa depending on scroll
+        // direction.
+        bool scrolling_down = rows > 0;
+        int64_t start_row = scrolling_down ? top : bottom - 1;
+        int64_t end_row = scrolling_down ? bottom - 1 : top;
+        int64_t increment = scrolling_down ? 1 : -1;
+
+        for (int64_t i = start_row;
+             scrolling_down ? i <= end_row : i >= end_row; i += increment)
+        {
+            // Clip anything outside the scroll region
+            int64_t target_row = i - rows;
+            if (target_row < top || target_row >= bottom)
+            {
+                continue;
+            }
+
+            _grid.LineCopy(left, right, i, target_row);
+
+            // Sadly I have given up on making use of IDXGISwapChain1::Present1
+            // scroll_rects or bitmap copies. The former seems insufficient for
+            // nvim since it can require multiple scrolls per frame, the latter
+            // I can't seem to make work with the FLIP_SEQUENTIAL swapchain
+            // model. Thus we fall back to drawing the appropriate scrolled grid
+            // lines
+            renderer->DrawGridLine(target_row);
+        }
+
+        // Redraw the line which the cursor has moved to, as it is no
+        // longer guaranteed that the cursor is still there
+        int cursor_row = _grid.CursorRow() - rows;
+        if (cursor_row >= 0 && cursor_row < _grid.Rows())
+        {
+            renderer->DrawGridLine(cursor_row);
         }
     }
 };
@@ -793,8 +970,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
     Nvim nvim(cmd.nvim_command_line, hwnd);
     context.nvim = &nvim;
-    context._grid.OnSizeChanged([&nvim](const GridSize &size)
-    {
+    context._grid.OnSizeChanged([&nvim](const GridSize &size) {
         nvim.SendResize(size.rows, size.cols);
     });
     context.hwnd = hwnd;

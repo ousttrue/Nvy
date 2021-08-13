@@ -72,10 +72,7 @@ public:
     void DrawGridLine(int row);
     void DrawCursor();
     void DrawBorderRectangles();
-    void DrawGridLines(mpack_node_t grid_lines);
-    void ScrollRegion(mpack_node_t scroll_region);
-    void SetGuiOptions(mpack_node_t option_set);
-    void ClearGrid();
+    void DrawBackgroundRect();
     void StartDraw();
     void FinishDraw();
 };

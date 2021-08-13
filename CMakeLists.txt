@@ -43,26 +43,26 @@ target_link_libraries(Nvy PUBLIC
     Dwmapi.lib
 )
 
-target_precompile_headers(Nvy PUBLIC
-    <cassert>
-    <cmath>
-    <cstdint>
-    <cstdio>
-    <windows.h>
-    <d3d11_4.h>
-    <d2d1_3.h>
-    <d2d1_3helper.h>
-    <dwrite_3.h>
-    <shellscalingapi.h>
-    <dwmapi.h>
+# target_precompile_headers(Nvy PUBLIC
+#     <cassert>
+#     <cmath>
+#     <cstdint>
+#     <cstdio>
+#     <windows.h>
+#     <d3d11_4.h>
+#     <d2d1_3.h>
+#     <d2d1_3helper.h>
+#     <dwrite_3.h>
+#     <shellscalingapi.h>
+#     <dwmapi.h>
     
-    "src/third_party/mpack/mpack.h"
+#     "src/third_party/mpack/mpack.h"
 
-    "src/common/dx_helper.h"
-    "src/common/mpack_helper.h"
-    "src/common/vec.h"
-    "src/common/window_messages.h"
-)
+#     "src/common/dx_helper.h"
+#     "src/common/mpack_helper.h"
+#     "src/common/vec.h"
+#     "src/common/window_messages.h"
+# )
 
 target_compile_definitions(Nvy PUBLIC
     MPACK_EXTENSIONS

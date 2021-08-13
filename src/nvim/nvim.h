@@ -1,4 +1,8 @@
 #pragma once
+#include <stdint.h>
+#include <Windows.h>
+#include <common/vec.h>
+#include <vector>
 
 enum NvimRequest : uint8_t
 {
@@ -48,7 +52,7 @@ public:
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;
 
-    void ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out);
+    std::vector<char> ParseConfig(struct mpack_node_t *config_node);
     void SendUIAttach(int grid_rows, int grid_cols);
     void SendResize(int grid_rows, int grid_cols);
     void SendChar(wchar_t input_char);

@@ -1,6 +1,7 @@
 #include "nvim.h"
 #include "common/mpack_helper.h"
 #include "third_party/mpack/mpack.h"
+#include "common/window_messages.h"
 
 constexpr int Megabytes(int n)
 {
@@ -224,11 +225,12 @@ Nvim::~Nvim()
     delete _impl;
 }
 
-void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
+std::vector<char> Nvim::ParseConfig(mpack_node_t *config_node)
 {
+    std::vector<char> guifont_out;
     char path[MAX_PATH];
-    const char *config_path = mpack_node_str(config_node);
-    size_t config_path_strlen = mpack_node_strlen(config_node);
+    const char *config_path = mpack_node_str(*config_node);
+    size_t config_path_strlen = mpack_node_strlen(*config_node);
     strncpy_s(path, MAX_PATH, config_path, config_path_strlen);
     strcat_s(path, MAX_PATH - config_path_strlen - 1, "\\init.vim");
 
@@ -238,7 +240,7 @@ void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
 
     if (config_file == INVALID_HANDLE_VALUE)
     {
-        return;
+        return guifont_out;
     }
 
     char *buffer;
@@ -246,7 +248,7 @@ void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
     if (!GetFileSizeEx(config_file, &file_size))
     {
         CloseHandle(config_file);
-        return;
+        return guifont_out;
     }
     buffer = static_cast<char *>(malloc(file_size.QuadPart));
 
@@ -255,7 +257,7 @@ void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
     {
         CloseHandle(config_file);
         free(buffer);
-        return;
+        return guifont_out;
     }
     CloseHandle(config_file);
 
@@ -278,7 +280,7 @@ void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
             }
             if (!inside_comment)
             {
-                guifont_out->clear();
+                guifont_out.clear();
 
                 int line_offset = (guifont - line + strlen("set guifont="));
                 int guifont_strlen = strlen(line) - line_offset;
@@ -289,19 +291,20 @@ void Nvim::ParseConfig(mpack_node_t config_node, Vec<char> *guifont_out)
                         i < (guifont_strlen - 1) &&
                         line[line_offset + i + 1] == ' ')
                     {
-                        guifont_out->push_back(' ');
+                        guifont_out.push_back(' ');
                         ++i;
                         continue;
                     }
-                    guifont_out->push_back(line[i + line_offset]);
+                    guifont_out.push_back(line[i + line_offset]);
                 }
-                guifont_out->push_back('\0');
+                guifont_out.push_back('\0');
             }
         }
         line = strtok_s(NULL, "\r\n", &strtok_context);
     }
 
     free(buffer);
+    return guifont_out;
 }
 
 void Nvim::SendUIAttach(int grid_rows, int grid_cols)

@@ -1,11 +1,12 @@
 #pragma once
+#include <d2d1_3.h>
+#include <dwrite_3.h>
 #include <wrl/client.h>
 #include <memory>
 #include "grid.h"
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
-
 
 struct GridPoint
 {
@@ -59,7 +60,7 @@ public:
                           IUnknown *client_drawing_effect);
     HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
 
-// private:
+    // private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
     void ApplyHighlightAttributes(struct HighlightAttributes *hl_attribs,

@@ -1,5 +1,9 @@
 #include "renderer.h"
 #include "grid.h"
+#include <assert.h>
+#include <common/dx_helper.h>
+#include <d3d11_4.h>
+#include <d2d1_3.h>
 #include <tuple>
 #include <vector>
 using namespace Microsoft::WRL;
@@ -866,7 +870,6 @@ void Renderer::DrawCursor()
                                   double_width_char_factor, &cursor_hl_attribs);
     }
 }
-
 
 void Renderer::DrawBorderRectangles()
 {

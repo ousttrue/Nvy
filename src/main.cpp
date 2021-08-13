@@ -1,6 +1,12 @@
 #include "nvim/nvim.h"
 #include "renderer/grid.h"
 #include "renderer/renderer.h"
+#include "common/mpack_helper.h"
+#include "common/vec.h"
+#include "common/window_messages.h"
+#include "third_party/mpack/mpack.h"
+#include <dwmapi.h>
+#include <shellscalingapi.h>
 
 struct Context
 {
@@ -69,9 +75,7 @@ struct Context
             break;
             case NvimRequest::nvim_eval:
             {
-                Vec<char> guifont_buffer;
-                nvim->ParseConfig(result.params, &guifont_buffer);
-
+                auto guifont_buffer = nvim->ParseConfig(&result.params);
                 if (!guifont_buffer.empty())
                 {
                     renderer->UpdateGuiFont(guifont_buffer.data(),

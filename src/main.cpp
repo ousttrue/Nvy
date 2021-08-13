@@ -1,3 +1,5 @@
+#include "commandline.h"
+#include "win32window.h"
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
 #include <stdint.h>
@@ -347,97 +349,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
     }
         return 0;
-    case WM_DROPFILES:
-    {
-        wchar_t file_to_open[MAX_PATH];
-        uint32_t num_files = DragQueryFileW(reinterpret_cast<HDROP>(wparam),
-                                            0xFFFFFFFF, file_to_open, MAX_PATH);
-        for (int i = 0; i < num_files; ++i)
-        {
-            DragQueryFileW(reinterpret_cast<HDROP>(wparam), i, file_to_open,
-                           MAX_PATH);
-            context->nvim->OpenFile(file_to_open);
-        }
-    }
-        return 0;
     }
 
     return DefWindowProc(hwnd, msg, wparam, lparam);
 }
-
-const int MAX_NVIM_CMD_LINE_SIZE = 32767;
-struct CommandLine
-{
-    bool start_maximized = false;
-    bool disable_ligatures = false;
-    float linespace_factor = 1.0f;
-    int64_t rows = 0;
-    int64_t cols = 0;
-    wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE] = {};
-
-    void Parse()
-    {
-        int n_args;
-        auto cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
-        int cmd_line_size_left =
-            MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
-        wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
-
-        // Skip argv[0]
-        for (int i = 1; i < n_args; ++i)
-        {
-            if (!wcscmp(cmd_line_args[i], L"--maximize"))
-            {
-                start_maximized = true;
-            }
-            else if (!wcscmp(cmd_line_args[i], L"--disable-ligatures"))
-            {
-                disable_ligatures = true;
-            }
-            else if (!wcsncmp(cmd_line_args[i], L"--geometry=",
-                              wcslen(L"--geometry=")))
-            {
-                wchar_t *end_ptr;
-                cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
-                rows = wcstol(end_ptr + 1, nullptr, 10);
-            }
-            else if (!wcsncmp(cmd_line_args[i], L"--linespace-factor=",
-                              wcslen(L"--linespace-factor=")))
-            {
-                wchar_t *end_ptr;
-                float factor = wcstof(&cmd_line_args[i][19], &end_ptr);
-                if (factor > 0.0f && factor < 20.0f)
-                {
-                    linespace_factor = factor;
-                }
-            }
-            // Otherwise assume the argument is a filename to open
-            else
-            {
-                size_t arg_size = wcslen(cmd_line_args[i]);
-                if (arg_size <= (cmd_line_size_left + 3))
-                {
-                    wcscat_s(nvim_command_line, cmd_line_size_left, L" \"");
-                    cmd_line_size_left -= 2;
-                    wcscat_s(nvim_command_line, cmd_line_size_left,
-                             cmd_line_args[i]);
-                    cmd_line_size_left -= arg_size;
-                    wcscat_s(nvim_command_line, cmd_line_size_left, L"\"");
-                    cmd_line_size_left -= 1;
-                }
-            }
-        }
-    }
-
-    static CommandLine Get()
-    {
-        CommandLine cmd;
-        cmd.Parse();
-        return cmd;
-    }
-};
-
-#include "win32window.h"
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
@@ -452,15 +367,20 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     // connect event
     window.OnEvent(
-        [&renderer](const WindowEvent &event)
+        [&renderer, &nvim](const WindowEvent &event)
         {
             switch (event.type)
             {
             case WindowEventTypes::SizeChanged:
                 renderer.Resize(event.width, event.height);
                 break;
+
             case WindowEventTypes::DpiChanged:
                 renderer.SetDpiScale(event.dpi);
+                break;
+
+            case WindowEventTypes::FileDroped:
+                nvim.OpenFile(event.path);
                 break;
             }
         });

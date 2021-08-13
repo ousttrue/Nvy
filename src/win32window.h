@@ -2,11 +2,13 @@
 #include <string>
 #include <list>
 #include <functional>
+#include <string>
 
 enum class WindowEventTypes
 {
     SizeChanged,
     DpiChanged,
+    FileDroped,
 };
 
 struct WindowEvent
@@ -20,6 +22,7 @@ struct WindowEvent
             uint32_t height;
         };
         uint32_t dpi;
+        const wchar_t *path;
     };
 };
 

@@ -137,6 +137,23 @@ LRESULT CALLBACK Win32Window::Proc(HWND hwnd, UINT msg, WPARAM wparam,
         }
         return 0;
     }
+
+    case WM_DROPFILES:
+    {
+        wchar_t file_to_open[MAX_PATH];
+        uint32_t num_files = DragQueryFileW(reinterpret_cast<HDROP>(wparam),
+                                            0xFFFFFFFF, file_to_open, MAX_PATH);
+        for (int i = 0; i < num_files; ++i)
+        {
+            DragQueryFileW(reinterpret_cast<HDROP>(wparam), i, file_to_open,
+                           MAX_PATH);
+            RaiseEvent({
+                .type = WindowEventTypes::FileDroped,
+                .path = file_to_open,
+            });
+        }
+        return 0;
+    }
     }
 
     return DefWindowProcW(hwnd, msg, wparam, lparam);

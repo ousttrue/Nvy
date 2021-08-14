@@ -63,15 +63,15 @@ public:
     // private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
-    void ApplyHighlightAttributes(const HighlightAttributes *hl_attribs,
+    void ApplyHighlightAttributes(const HighlightAttribute *hl_attribs,
                                   IDWriteTextLayout *text_layout, int start,
                                   int end);
     D2D1_RECT_F GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect);
     void DrawBackgroundRect(D2D1_RECT_F rect,
-                            const HighlightAttributes *hl_attribs);
+                            const HighlightAttribute *hl_attribs);
     void DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
                              uint32_t length,
-                             const HighlightAttributes *hl_attribs);
+                             const HighlightAttribute *hl_attribs);
     void DrawGridLine(const Grid *grid, int row);
     void DrawCursor(const Grid *grid);
     void DrawBorderRectangles(const Grid *grid);

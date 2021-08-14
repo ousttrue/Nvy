@@ -43,7 +43,7 @@ enum HighlightAttributeFlags : uint16_t
     HL_ATTRIB_UNDERCURL = 1 << 5
 };
 
-struct HighlightAttributes
+struct HighlightAttribute
 {
     uint32_t foreground;
     uint32_t background;
@@ -70,7 +70,7 @@ class Grid
     std::vector<CellProperty> _grid_cell_properties;
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Cursor _cursor = {0};
-    std::vector<HighlightAttributes> _hl_attribs;
+    std::vector<HighlightAttribute> _hl_attribs;
     std::list<GridSizeChanged> _sizeCallbacks;
 
 public:
@@ -161,15 +161,15 @@ public:
         this->_cursor.mode_info = &this->_cursor_mode_infos[index];
     }
 
-    HighlightAttributes *GetHighlightAttributes()
+    HighlightAttribute *GetHighlightAttributes()
     {
         return this->_hl_attribs.data();
     }
-    const HighlightAttributes *GetHighlightAttributes() const
+    const HighlightAttribute *GetHighlightAttributes() const
     {
         return this->_hl_attribs.data();
     }
-    uint32_t CreateForegroundColor(const HighlightAttributes *hl_attribs);
-    uint32_t CreateBackgroundColor(const HighlightAttributes *hl_attribs);
-    uint32_t CreateSpecialColor(const HighlightAttributes *hl_attribs);
+    uint32_t CreateForegroundColor(const HighlightAttribute *hl_attribs);
+    uint32_t CreateBackgroundColor(const HighlightAttribute *hl_attribs);
+    uint32_t CreateSpecialColor(const HighlightAttribute *hl_attribs);
 };

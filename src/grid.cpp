@@ -52,7 +52,7 @@ void Grid::Clear()
            this->_size.cols * this->_size.rows * sizeof(CellProperty));
 }
 
-uint32_t Grid::CreateForegroundColor(const HighlightAttributes *hl_attribs)
+uint32_t Grid::CreateForegroundColor(const HighlightAttribute *hl_attribs)
 {
     if (hl_attribs->flags & HL_ATTRIB_REVERSE)
     {
@@ -68,7 +68,7 @@ uint32_t Grid::CreateForegroundColor(const HighlightAttributes *hl_attribs)
     }
 }
 
-uint32_t Grid::CreateBackgroundColor(const HighlightAttributes *hl_attribs)
+uint32_t Grid::CreateBackgroundColor(const HighlightAttribute *hl_attribs)
 {
     if (hl_attribs->flags & HL_ATTRIB_REVERSE)
     {
@@ -84,7 +84,7 @@ uint32_t Grid::CreateBackgroundColor(const HighlightAttributes *hl_attribs)
     }
 }
 
-uint32_t Grid::CreateSpecialColor(const HighlightAttributes *hl_attribs)
+uint32_t Grid::CreateSpecialColor(const HighlightAttribute *hl_attribs)
 {
     return hl_attribs->special == DEFAULT_COLOR ? this->_hl_attribs[0].special
                                                 : hl_attribs->special;

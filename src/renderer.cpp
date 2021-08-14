@@ -667,7 +667,7 @@ void Renderer::Resize(uint32_t width, uint32_t height)
     _pixel_size.height = height;
 }
 
-void Renderer::ApplyHighlightAttributes(const HighlightAttributes *hl_attribs,
+void Renderer::ApplyHighlightAttributes(const HighlightAttribute *hl_attribs,
                                         IDWriteTextLayout *text_layout,
                                         int start, int end)
 {
@@ -701,7 +701,7 @@ void Renderer::ApplyHighlightAttributes(const HighlightAttributes *hl_attribs,
 }
 
 void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
-                                  const HighlightAttributes *hl_attribs)
+                                  const HighlightAttribute *hl_attribs)
 {
     auto color = _grid->CreateBackgroundColor(hl_attribs);
     _device->_d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
@@ -737,7 +737,7 @@ D2D1_RECT_F Renderer::GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect)
 
 void Renderer::DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
                                    uint32_t length,
-                                   const HighlightAttributes *hl_attribs)
+                                   const HighlightAttribute *hl_attribs)
 {
     auto text_layout = _dwrite->GetTextLayout(rect, text, length);
     this->ApplyHighlightAttributes(hl_attribs, text_layout.Get(), 0, 1);

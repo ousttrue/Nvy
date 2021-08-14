@@ -2,10 +2,9 @@
 #include <vector>
 #include <functional>
 #include <list>
+#include "hl.h"
 
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
-constexpr uint32_t DEFAULT_COLOR = 0x46464646;
-constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
 
 struct CellProperty
 {
@@ -26,29 +25,24 @@ struct CursorModeInfo
     CursorShape shape;
     uint16_t hl_attrib_id;
 };
+
+struct GridPoint
+{
+    int row;
+    int col;
+
+    static GridPoint FromCursor(int x, int y, int font_width, int font_height)
+    {
+        return GridPoint{.row = static_cast<int>(y / font_height),
+                         .col = static_cast<int>(x / font_width)};
+    }
+};
+
 struct Cursor
 {
     CursorModeInfo *mode_info;
     int row;
     int col;
-};
-
-enum HighlightAttributeFlags : uint16_t
-{
-    HL_ATTRIB_REVERSE = 1 << 0,
-    HL_ATTRIB_ITALIC = 1 << 1,
-    HL_ATTRIB_BOLD = 1 << 2,
-    HL_ATTRIB_STRIKETHROUGH = 1 << 3,
-    HL_ATTRIB_UNDERLINE = 1 << 4,
-    HL_ATTRIB_UNDERCURL = 1 << 5
-};
-
-struct HighlightAttribute
-{
-    uint32_t foreground;
-    uint32_t background;
-    uint32_t special;
-    uint16_t flags;
 };
 
 struct GridSize
@@ -60,6 +54,13 @@ struct GridSize
     {
         return rows == rhs.rows && cols == rhs.cols;
     }
+
+    static GridSize FromWindowSize(int window_width, int window_height,
+                                   int font_width, int font_height)
+    {
+        return GridSize{.rows = static_cast<int>(window_height / font_height),
+                        .cols = static_cast<int>(window_width / font_width)};
+    }
 };
 using GridSizeChanged = std::function<void(const GridSize &)>;
 
@@ -70,8 +71,8 @@ class Grid
     std::vector<CellProperty> _grid_cell_properties;
     CursorModeInfo _cursor_mode_infos[MAX_CURSOR_MODE_INFOS] = {};
     Cursor _cursor = {0};
-    std::vector<HighlightAttribute> _hl_attribs;
     std::list<GridSizeChanged> _sizeCallbacks;
+    HighlightAttributes _hl;
 
 public:
     Grid();
@@ -161,15 +162,12 @@ public:
         this->_cursor.mode_info = &this->_cursor_mode_infos[index];
     }
 
-    HighlightAttribute *GetHighlightAttributes()
+    HighlightAttribute &hl(size_t index)
     {
-        return this->_hl_attribs.data();
+        return _hl[index];
     }
-    const HighlightAttribute *GetHighlightAttributes() const
+    const HighlightAttribute &hl(size_t index) const
     {
-        return this->_hl_attribs.data();
+        return _hl[index];
     }
-    uint32_t CreateForegroundColor(const HighlightAttribute *hl_attribs);
-    uint32_t CreateBackgroundColor(const HighlightAttribute *hl_attribs);
-    uint32_t CreateSpecialColor(const HighlightAttribute *hl_attribs);
 };

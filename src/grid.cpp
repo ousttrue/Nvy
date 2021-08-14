@@ -2,7 +2,11 @@
 
 Grid::Grid()
 {
-    this->_hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
+    _hl.resize(MAX_HIGHLIGHT_ATTRIBS);
+    for (auto &hl : _hl)
+    {
+        hl._default = &_hl[0];
+    }
 }
 
 Grid::~Grid()
@@ -50,42 +54,4 @@ void Grid::Clear()
     }
     memset(this->_grid_cell_properties.data(), 0,
            this->_size.cols * this->_size.rows * sizeof(CellProperty));
-}
-
-uint32_t Grid::CreateForegroundColor(const HighlightAttribute *hl_attribs)
-{
-    if (hl_attribs->flags & HL_ATTRIB_REVERSE)
-    {
-        return hl_attribs->background == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].background
-                   : hl_attribs->background;
-    }
-    else
-    {
-        return hl_attribs->foreground == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].foreground
-                   : hl_attribs->foreground;
-    }
-}
-
-uint32_t Grid::CreateBackgroundColor(const HighlightAttribute *hl_attribs)
-{
-    if (hl_attribs->flags & HL_ATTRIB_REVERSE)
-    {
-        return hl_attribs->foreground == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].foreground
-                   : hl_attribs->foreground;
-    }
-    else
-    {
-        return hl_attribs->background == DEFAULT_COLOR
-                   ? this->_hl_attribs[0].background
-                   : hl_attribs->background;
-    }
-}
-
-uint32_t Grid::CreateSpecialColor(const HighlightAttribute *hl_attribs)
-{
-    return hl_attribs->special == DEFAULT_COLOR ? this->_hl_attribs[0].special
-                                                : hl_attribs->special;
 }

@@ -1,5 +1,6 @@
 #include "nvim.h"
 #include "grid.h"
+#include "hl.h"
 #include "renderer.h"
 #include "mpack_helper.h"
 #include "vec.h"
@@ -10,20 +11,27 @@
 
 struct Context
 {
-    GridSize start_grid_size;
-    bool start_maximized;
-    HWND hwnd;
-    Nvim *nvim;
-    Renderer *renderer;
-    bool dead_char_pending;
-    bool xbuttons[2];
-    GridPoint cached_cursor_grid_pos;
-    WINDOWPLACEMENT saved_window_placement;
-    UINT saved_dpi_scaling;
-    uint32_t saved_window_width;
-    uint32_t saved_window_height;
+    GridSize start_grid_size = {};
+    bool start_maximized = false;
+    HWND hwnd = nullptr;
+    Nvim *nvim = nullptr;
+    Renderer *renderer = nullptr;
+    bool dead_char_pending = false;
+    bool xbuttons[2] = {false, false};
+    GridPoint cached_cursor_grid_pos = {};
+    WINDOWPLACEMENT saved_window_placement = {.length =
+                                                  sizeof(WINDOWPLACEMENT)};
+    UINT saved_dpi_scaling = 0;
+    uint32_t saved_window_width = 0;
+    uint32_t saved_window_height = 0;
     bool _ui_busy = false;
     Grid _grid;
+
+    Context(int rows, int cols, bool start_maximized)
+        : start_grid_size({.rows = rows, .cols = cols}),
+          start_maximized(start_maximized)
+    {
+    }
 
     void ToggleFullscreen()
     {
@@ -95,8 +103,11 @@ struct Context
                 // Attach the renderer now that the window size is
                 // determined
                 renderer->Attach();
-                auto [rows, cols] = renderer->GridSize();
-                nvim->SendUIAttach(rows, cols);
+                auto size = renderer->Size();
+                auto fontSize = renderer->FontSize();
+                auto grid = GridSize::FromWindowSize(
+                    size.width, size.height, fontSize.width, fontSize.height);
+                nvim->SendUIAttach(grid.rows, grid.cols);
 
                 if (start_maximized)
                 {
@@ -313,15 +324,15 @@ struct Context
 
             // Default colors occupy the first index of the highlight attribs
             // array
-            _grid.GetHighlightAttributes()[0].foreground =
-                static_cast<uint32_t>(
-                    mpack_node_array_at(color_arr, 0).data->value.u);
-            _grid.GetHighlightAttributes()[0].background =
-                static_cast<uint32_t>(
-                    mpack_node_array_at(color_arr, 1).data->value.u);
-            _grid.GetHighlightAttributes()[0].special = static_cast<uint32_t>(
+            auto &defaultHL = _grid.hl(0);
+
+            defaultHL.foreground = static_cast<uint32_t>(
+                mpack_node_array_at(color_arr, 0).data->value.u);
+            defaultHL.background = static_cast<uint32_t>(
+                mpack_node_array_at(color_arr, 1).data->value.u);
+            defaultHL.special = static_cast<uint32_t>(
                 mpack_node_array_at(color_arr, 2).data->value.u);
-            _grid.GetHighlightAttributes()[0].flags = 0;
+            defaultHL.flags = 0;
         }
     }
 
@@ -351,12 +362,9 @@ struct Context
                     *color = DEFAULT_COLOR;
                 }
             };
-            SetColor("foreground",
-                     &_grid.GetHighlightAttributes()[attrib_index].foreground);
-            SetColor("background",
-                     &_grid.GetHighlightAttributes()[attrib_index].background);
-            SetColor("special",
-                     &_grid.GetHighlightAttributes()[attrib_index].special);
+            SetColor("foreground", &_grid.hl(attrib_index).foreground);
+            SetColor("background", &_grid.hl(attrib_index).background);
+            SetColor("special", &_grid.hl(attrib_index).special);
 
             const auto SetFlag = [&](const char *flag_name,
                                      HighlightAttributeFlags flag) {
@@ -366,13 +374,11 @@ struct Context
                 {
                     if (flag_node.data->value.b)
                     {
-                        _grid.GetHighlightAttributes()[attrib_index].flags |=
-                            flag;
+                        _grid.hl(attrib_index).flags |= flag;
                     }
                     else
                     {
-                        _grid.GetHighlightAttributes()[attrib_index].flags &=
-                            ~flag;
+                        _grid.hl(attrib_index).flags &= ~flag;
                     }
                 }
             };
@@ -627,7 +633,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         return 0;
     case WM_RENDERER_FONT_UPDATE:
     {
-        auto [rows, cols] = context->renderer->GridSize();
+        auto size = context->renderer->Size();
+        auto fontSize = context->renderer->FontSize();
+        auto [rows, cols] = GridSize::FromWindowSize(
+            size.width, size.height, fontSize.width, fontSize.height);
         context->nvim->SendResize(rows, cols);
     }
         return 0;
@@ -698,8 +707,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_MOUSEMOVE:
     {
         POINTS cursor_pos = MAKEPOINTS(lparam);
-        GridPoint grid_pos =
-            context->renderer->CursorToGridPoint(cursor_pos.x, cursor_pos.y);
+        auto fontSize = context->renderer->FontSize();
+        auto grid_pos = GridPoint::FromCursor(cursor_pos.x, cursor_pos.y,
+                                              fontSize.width, fontSize.height);
         if (context->cached_cursor_grid_pos.col != grid_pos.col ||
             context->cached_cursor_grid_pos.row != grid_pos.row)
         {
@@ -739,8 +749,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_MBUTTONUP:
     {
         POINTS cursor_pos = MAKEPOINTS(lparam);
-        auto [row, col] =
-            context->renderer->CursorToGridPoint(cursor_pos.x, cursor_pos.y);
+        auto fontSize = context->renderer->FontSize();
+        auto [row, col] = GridPoint::FromCursor(
+            cursor_pos.x, cursor_pos.y, fontSize.width, fontSize.height);
         if (msg == WM_LBUTTONDOWN)
         {
             context->nvim->SendMouseInput(MouseButton::Left, MouseAction::Press,
@@ -814,8 +825,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
         short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
         short scroll_amount = wheel_distance / WHEEL_DELTA;
-        auto [row, col] = context->renderer->CursorToGridPoint(client_point.x,
-                                                               client_point.y);
+        auto font_size = context->renderer->FontSize();
+        auto [row, col] = GridPoint::FromCursor(
+            client_point.x, client_point.y, font_size.width, font_size.height);
         MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp
                                                : MouseAction::MouseWheelDown;
 
@@ -955,14 +967,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         return 1;
     }
 
-    Context context{.start_grid_size{.rows = static_cast<int>(cmd.rows),
-                                     .cols = static_cast<int>(cmd.cols)},
-                    .start_maximized = cmd.start_maximized,
-
-                    .nvim = nullptr,
-                    .renderer = nullptr,
-                    .saved_window_placement =
-                        WINDOWPLACEMENT{.length = sizeof(WINDOWPLACEMENT)}};
+    Context context(cmd.rows, cmd.cols, cmd.start_maximized);
 
     HWND hwnd = CreateWindowEx(WS_EX_ACCEPTFILES, window_class_name,
                                window_title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
@@ -1001,8 +1006,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         {
             previous_width = context.saved_window_width;
             previous_height = context.saved_window_height;
-            auto [rows, cols] = context.renderer->PixelsToGridSize(
-                context.saved_window_width, context.saved_window_height);
+            auto font_size = context.renderer->FontSize();
+            auto [rows, cols] = GridSize::FromWindowSize(
+                context.saved_window_width, context.saved_window_height,
+                font_size.width, font_size.height);
             context.renderer->Resize(context.saved_window_width,
                                      context.saved_window_height);
             context.nvim->SendResize(rows, cols);

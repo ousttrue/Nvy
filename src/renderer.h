@@ -3,16 +3,10 @@
 #include <dwrite_3.h>
 #include <wrl/client.h>
 #include <memory>
-#include "grid.h"
 
 constexpr const char *DEFAULT_FONT = "Consolas";
 constexpr float DEFAULT_FONT_SIZE = 14.0f;
 
-struct GridPoint
-{
-    int row;
-    int col;
-};
 struct PixelSize
 {
     int width;
@@ -22,6 +16,8 @@ struct PixelSize
 constexpr int MAX_FONT_LENGTH = 128;
 constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
+
+struct HighlightAttribute;
 class Renderer
 {
     std::unique_ptr<class DeviceImpl> _device;
@@ -39,14 +35,18 @@ public:
     Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
              float monitor_dpi, Grid *grid);
     ~Renderer();
+    // backbuffer
+    D2D1_SIZE_U Size() const
+    {
+        return _pixel_size;
+    }
     void Attach();
     void Resize(uint32_t width, uint32_t height);
+    // font
+    D2D1_SIZE_U FontSize() const;
     void UpdateGuiFont(const char *guifont, size_t strlen);
     void UpdateFont(float font_size, const char *font_string, int strlen);
     PixelSize GridToPixelSize(int rows, int cols);
-    GridSize PixelsToGridSize(int width, int height);
-    GridPoint CursorToGridPoint(int x, int y);
-    GridSize GridSize();
     bool SetDpiScale(float current_dpi, int *pRows, int *pCols);
     bool ResizeFont(float size, int *pRows, int *pCols);
     HRESULT
@@ -63,9 +63,9 @@ public:
     // private:
     void InitializeWindowDependentResources();
     void HandleDeviceLost();
-    void ApplyHighlightAttributes(const HighlightAttribute *hl_attribs,
-                                  IDWriteTextLayout *text_layout, int start,
-                                  int end);
+    void ApplyHighlightAttributes(IDWriteTextLayout *text_layout, int start,
+                                  int end,
+                                  const HighlightAttribute *hl_attribs);
     D2D1_RECT_F GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect);
     void DrawBackgroundRect(D2D1_RECT_F rect,
                             const HighlightAttribute *hl_attribs);

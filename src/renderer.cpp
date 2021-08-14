@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "grid.h"
+#include "hl.h"
 #include "dx_helper.h"
 #include <assert.h>
 #include <d3d11_4.h>
@@ -385,8 +386,8 @@ public:
         return metrics.width;
     }
 
-    ComPtr<IDWriteTextLayout1> GetTextLayout(const D2D1_RECT_F &rect,
-                                             const wchar_t *text, uint32_t length)
+    ComPtr<IDWriteTextLayout1>
+    GetTextLayout(const D2D1_RECT_F &rect, const wchar_t *text, uint32_t length)
     {
         ComPtr<IDWriteTextLayout> temp_text_layout;
         WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
@@ -586,6 +587,31 @@ public:
     }
 };
 
+///
+/// Renderer
+///
+Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
+                   float monitor_dpi, Grid *grid)
+    : _dwrite(
+          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
+      _grid(grid)
+{
+    this->_hwnd = hwnd;
+    this->HandleDeviceLost();
+}
+
+Renderer::~Renderer()
+{
+}
+
+D2D1_SIZE_U Renderer::FontSize() const
+{
+    return {
+        .width = static_cast<UINT>(_dwrite->_font_width),
+        .height = static_cast<UINT>(_dwrite->_font_height),
+    };
+}
+
 void Renderer::InitializeWindowDependentResources()
 {
     if (this->_swapchain)
@@ -637,20 +663,6 @@ void Renderer::HandleDeviceLost()
                      static_cast<int>(strlen(DEFAULT_FONT)));
 }
 
-Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-                   float monitor_dpi, Grid *grid)
-    : _dwrite(
-          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
-      _grid(grid)
-{
-    this->_hwnd = hwnd;
-    this->HandleDeviceLost();
-}
-
-Renderer::~Renderer()
-{
-}
-
 void Renderer::Attach()
 {
     RECT client_rect;
@@ -667,13 +679,13 @@ void Renderer::Resize(uint32_t width, uint32_t height)
     _pixel_size.height = height;
 }
 
-void Renderer::ApplyHighlightAttributes(const HighlightAttribute *hl_attribs,
-                                        IDWriteTextLayout *text_layout,
-                                        int start, int end)
+void Renderer::ApplyHighlightAttributes(IDWriteTextLayout *text_layout,
+                                        int start, int end,
+                                        const HighlightAttribute *hl_attribs)
 {
     ComPtr<GlyphDrawingEffect> drawing_effect;
-    GlyphDrawingEffect::Create(_grid->CreateForegroundColor(hl_attribs),
-                               _grid->CreateSpecialColor(hl_attribs),
+    GlyphDrawingEffect::Create(hl_attribs->CreateForegroundColor(),
+                               hl_attribs->CreateSpecialColor(),
                                &drawing_effect);
     DWRITE_TEXT_RANGE range{.startPosition = static_cast<uint32_t>(start),
                             .length = static_cast<uint32_t>(end - start)};
@@ -703,7 +715,7 @@ void Renderer::ApplyHighlightAttributes(const HighlightAttribute *hl_attribs,
 void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
                                   const HighlightAttribute *hl_attribs)
 {
-    auto color = _grid->CreateBackgroundColor(hl_attribs);
+    auto color = hl_attribs->CreateBackgroundColor();
     _device->_d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
     _device->_d2d_context->FillRectangle(
         rect, _device->_d2d_background_rect_brush.Get());
@@ -740,7 +752,7 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
                                    const HighlightAttribute *hl_attribs)
 {
     auto text_layout = _dwrite->GetTextLayout(rect, text, length);
-    this->ApplyHighlightAttributes(hl_attribs, text_layout.Get(), 0, 1);
+    this->ApplyHighlightAttributes(text_layout.Get(), 0, 1, hl_attribs);
 
     _device->_d2d_context->PushAxisAlignedClip(rect,
                                                D2D1_ANTIALIAS_MODE_ALIASED);
@@ -749,7 +761,7 @@ void Renderer::DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
     _device->_d2d_context->PopAxisAlignedClip();
 }
 
-void Renderer::DrawGridLine(const Grid* grid, int row)
+void Renderer::DrawGridLine(const Grid *grid, int row)
 {
     auto cols = grid->Cols();
     int base = row * cols;
@@ -760,8 +772,7 @@ void Renderer::DrawGridLine(const Grid* grid, int row)
                      .bottom =
                          (row * _dwrite->_font_height) + _dwrite->_font_height};
 
-    auto text_layout =
-        _dwrite->GetTextLayout(rect, &grid->Chars()[base], cols);
+    auto text_layout = _dwrite->GetTextLayout(rect, &grid->Chars()[base], cols);
 
     uint16_t hl_attrib_id = grid->Props()[base].hl_attrib_id;
     int col_offset = 0;
@@ -805,11 +816,9 @@ void Renderer::DrawGridLine(const Grid* grid, int row)
                                     _dwrite->_font_width * (i - col_offset),
                                 .bottom = (row * _dwrite->_font_height) +
                                           _dwrite->_font_height};
-            this->DrawBackgroundRect(
-                bg_rect, &grid->GetHighlightAttributes()[hl_attrib_id]);
-            this->ApplyHighlightAttributes(
-                &grid->GetHighlightAttributes()[hl_attrib_id],
-                text_layout.Get(), col_offset, i);
+            this->DrawBackgroundRect(bg_rect, &grid->hl(hl_attrib_id));
+            this->ApplyHighlightAttributes(text_layout.Get(), col_offset, i,
+                                           &grid->hl(hl_attrib_id));
 
             hl_attrib_id = grid->Props()[base + i].hl_attrib_id;
             col_offset = i;
@@ -821,11 +830,9 @@ void Renderer::DrawGridLine(const Grid* grid, int row)
     // hl_attrib
     D2D1_RECT_F last_rect = rect;
     last_rect.left = col_offset * _dwrite->_font_width;
-    this->DrawBackgroundRect(last_rect,
-                             &grid->GetHighlightAttributes()[hl_attrib_id]);
-    this->ApplyHighlightAttributes(
-        &grid->GetHighlightAttributes()[hl_attrib_id], text_layout.Get(),
-        col_offset, cols);
+    this->DrawBackgroundRect(last_rect, &grid->hl(hl_attrib_id));
+    this->ApplyHighlightAttributes(text_layout.Get(), col_offset, cols,
+                                   &grid->hl(hl_attrib_id));
 
     _device->_d2d_context->PushAxisAlignedClip(rect,
                                                D2D1_ANTIALIAS_MODE_ALIASED);
@@ -846,8 +853,7 @@ void Renderer::DrawCursor(const Grid *grid)
         double_width_char_factor += 1;
     }
 
-    auto cursor_hl_attribs =
-        grid->GetHighlightAttributes()[grid->CursorModeHighlightAttribute()];
+    auto cursor_hl_attribs = grid->hl(grid->CursorModeHighlightAttribute());
     if (grid->CursorModeHighlightAttribute() == 0)
     {
         cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
@@ -871,7 +877,7 @@ void Renderer::DrawCursor(const Grid *grid)
     }
 }
 
-void Renderer::DrawBorderRectangles(const Grid* grid)
+void Renderer::DrawBorderRectangles(const Grid *grid)
 {
     float left_border = _dwrite->_font_width * grid->Cols();
     float top_border = _dwrite->_font_height * grid->Rows();
@@ -883,8 +889,7 @@ void Renderer::DrawBorderRectangles(const Grid* grid)
             .top = 0.0f,
             .right = static_cast<float>(this->_pixel_size.width),
             .bottom = static_cast<float>(this->_pixel_size.height)};
-        this->DrawBackgroundRect(vertical_rect,
-                                 &grid->GetHighlightAttributes()[0]);
+        this->DrawBackgroundRect(vertical_rect, &grid->hl(0));
     }
 
     if (top_border != static_cast<float>(this->_pixel_size.height))
@@ -894,8 +899,7 @@ void Renderer::DrawBorderRectangles(const Grid* grid)
             .top = top_border,
             .right = static_cast<float>(this->_pixel_size.width),
             .bottom = static_cast<float>(this->_pixel_size.height)};
-        this->DrawBackgroundRect(horizontal_rect,
-                                 &grid->GetHighlightAttributes()[0]);
+        this->DrawBackgroundRect(horizontal_rect, &grid->hl(0));
     }
 }
 
@@ -935,7 +939,7 @@ void Renderer::DrawBackgroundRect()
                      .top = 0.0f,
                      .right = _grid->Cols() * _dwrite->_font_width,
                      .bottom = _grid->Rows() * _dwrite->_font_height};
-    this->DrawBackgroundRect(rect, &_grid->GetHighlightAttributes()[0]);
+    this->DrawBackgroundRect(rect, &_grid->hl(0));
 }
 
 void Renderer::StartDraw()
@@ -985,23 +989,6 @@ PixelSize Renderer::GridToPixelSize(int rows, int cols)
                      .height = adjusted_rect.bottom - adjusted_rect.top};
 }
 
-GridSize Renderer::PixelsToGridSize(int width, int height)
-{
-    return ::GridSize{.rows = static_cast<int>(height / _dwrite->_font_height),
-                      .cols = static_cast<int>(width / _dwrite->_font_width)};
-}
-
-GridPoint Renderer::CursorToGridPoint(int x, int y)
-{
-    return GridPoint{.row = static_cast<int>(y / _dwrite->_font_height),
-                     .col = static_cast<int>(x / _dwrite->_font_width)};
-}
-
-GridSize Renderer::GridSize()
-{
-    return PixelsToGridSize(_pixel_size.width, _pixel_size.height);
-}
-
 bool Renderer::SetDpiScale(float current_dpi, int *pRows, int *pCols)
 {
     _dwrite->SetDpiScale(current_dpi);
@@ -1039,7 +1026,7 @@ HRESULT Renderer::DrawGlyphRun(
     else
     {
         _device->_drawing_effect_brush->SetColor(
-            D2D1::ColorF(_grid->GetHighlightAttributes()[0].foreground));
+            D2D1::ColorF(_grid->hl(0).foreground));
     }
 
     DWRITE_GLYPH_IMAGE_FORMATS supported_formats =
@@ -1157,8 +1144,7 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
     }
     else
     {
-        _device->_temp_brush->SetColor(
-            D2D1::ColorF(_grid->GetHighlightAttributes()[0].special));
+        _device->_temp_brush->SetColor(D2D1::ColorF(_grid->hl(0).special));
     }
 
     D2D1_RECT_F rect =

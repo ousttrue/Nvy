@@ -1,1 +1,1 @@
-subdirs(mpack plog-master)
+subdirs(mpack plog json)

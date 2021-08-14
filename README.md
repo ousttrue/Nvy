@@ -3,14 +3,14 @@
 [Nvy](./README_original.md)
 
 ```
-+----+
-|NVIM|-----------+redraw
-+----+           |
- A keyboard      |
++----+ update  +----+
+|NVIM|-------->|grid|
++----+         +----+
+ A keyboard      |render
  | resize        v
-+----+---------+--------+
-|HWND|swapchain|Renderer|
-+----+---------+--------+
++----+         +------------+
+|HWND|         |RenderTarget|
++----+         +------------+
 ```
 
 <https://neovim.io/doc/user/api.html>

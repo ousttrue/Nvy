@@ -5,7 +5,6 @@
 #include "mpack_helper.h"
 #include "vec.h"
 #include "window_messages.h"
-#include "third_party/mpack/mpack.h"
 #include <dwmapi.h>
 #include <shellscalingapi.h>
 

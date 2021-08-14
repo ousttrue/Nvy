@@ -1,4 +1,6 @@
-add_executable(Nvy WIN32 "../resources/third_party/nvim_icon.rc")
+add_executable(Nvy WIN32
+${THIRDPARTY_DIR}/nvim/nvim_icon.rc
+)
 
 target_sources(Nvy PUBLIC
 "main.cpp"

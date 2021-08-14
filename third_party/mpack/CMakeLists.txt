@@ -8,5 +8,5 @@ target_compile_definitions(mpack PUBLIC
 )
 
 target_include_directories(mpack PUBLIC
-    ${CMAKE_CURRENT_LISTS_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}
 )

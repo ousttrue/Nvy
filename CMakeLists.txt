@@ -5,4 +5,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(Nvy)
-subdirs(src/third_party/mpack src)
+set(THIRDPARTY_DIR ${CMAKE_CURRENT_LIST_DIR}/third_party)
+subdirs(${THIRDPARTY_DIR}/mpack src)

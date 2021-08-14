@@ -1,6 +1,6 @@
 #pragma once
 #include <cassert>
-#include "third_party/mpack/mpack.h"
+#include <mpack.h>
 
 inline int MPackIntFromArray(mpack_node_t arr, int index) {
 	return static_cast<int>(mpack_node_array_at(arr, index).data->value.i);

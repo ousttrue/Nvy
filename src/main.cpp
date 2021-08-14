@@ -156,7 +156,8 @@ struct Context
             if (MPackMatchString(redraw_command_name, "grid_clear"))
             {
                 _grid.Clear();
-                renderer->DrawBackgroundRect();
+                renderer->DrawBackgroundRect(_grid.Rows(), _grid.Cols(),
+                                             &_grid.hl(0));
             }
             else if (MPackMatchString(redraw_command_name,
                                       "default_colors_set"))
@@ -611,8 +612,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             SetWindowPos(hwnd, nullptr, 0, 0, new_window_width,
                          new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
-            int rows, cols;
-            if (context->renderer->SetDpiScale(current_dpi, &rows, &cols))
+            auto fontSize = context->renderer->SetDpiScale(current_dpi);
+            auto size = context->renderer->Size();
+            auto [rows, cols] = GridSize::FromWindowSize(
+                size.width, size.height, fontSize.width, fontSize.height);
+            if (context->_grid.Rows() != rows || context->_grid.Cols() != rows)
             {
                 context->nvim->SendResize(rows, cols);
             }
@@ -833,9 +837,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
         if (should_resize_font)
         {
-            int rows, cols;
-            if (context->renderer->ResizeFont(scroll_amount * 2.0f, &rows,
-                                              &cols))
+            auto fontSize = context->renderer->ResizeFont(scroll_amount * 2.0f);
+            auto size = context->renderer->Size();
+            auto [rows, cols] = GridSize::FromWindowSize(
+                size.width, size.height, fontSize.width, fontSize.height);
+            if (context->_grid.Rows() != rows || context->_grid.Cols() != rows)
             {
                 context->nvim->SendResize(rows, cols);
             }
@@ -992,7 +998,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                      &(context.saved_dpi_scaling));
 
     Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-                      context.saved_dpi_scaling, &context._grid);
+                      context.saved_dpi_scaling, &context._grid.hl(0));
     context.renderer = &renderer;
 
     MSG msg;

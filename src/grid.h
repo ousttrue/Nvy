@@ -2,6 +2,7 @@
 #include <vector>
 #include <functional>
 #include <list>
+#include "cursor.h"
 #include "hl.h"
 
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
@@ -10,20 +11,6 @@ struct CellProperty
 {
     uint16_t hl_attrib_id;
     bool is_wide_char;
-};
-
-enum class CursorShape
-{
-    None,
-    Block,
-    Vertical,
-    Horizontal
-};
-
-struct CursorModeInfo
-{
-    CursorShape shape;
-    uint16_t hl_attrib_id;
 };
 
 struct GridPoint
@@ -36,13 +23,6 @@ struct GridPoint
         return GridPoint{.row = static_cast<int>(y / font_height),
                          .col = static_cast<int>(x / font_width)};
     }
-};
-
-struct Cursor
-{
-    CursorModeInfo *mode_info;
-    int row;
-    int col;
 };
 
 struct GridSize

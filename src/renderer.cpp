@@ -591,10 +591,10 @@ public:
 /// Renderer
 ///
 Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-                   float monitor_dpi, Grid *grid)
+                   float monitor_dpi, const HighlightAttribute *defaultHL)
     : _dwrite(
           DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
-      _grid(grid)
+      _defaultHL(defaultHL)
 {
     this->_hwnd = hwnd;
     this->HandleDeviceLost();
@@ -721,9 +721,10 @@ void Renderer::DrawBackgroundRect(D2D1_RECT_F rect,
         rect, _device->_d2d_background_rect_brush.Get());
 }
 
-D2D1_RECT_F Renderer::GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect)
+D2D1_RECT_F Renderer::GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect,
+                                              CursorShape shape)
 {
-    switch (_grid->GetCursorShape())
+    switch (shape)
     {
     case CursorShape::None:
     {
@@ -866,7 +867,8 @@ void Renderer::DrawCursor(const Grid *grid)
                  _dwrite->_font_width * double_width_char_factor,
         .bottom = (grid->CursorRow() * _dwrite->_font_height) +
                   _dwrite->_font_height};
-    D2D1_RECT_F cursor_fg_rect = this->GetCursorForegroundRect(cursor_rect);
+    D2D1_RECT_F cursor_fg_rect =
+        this->GetCursorForegroundRect(cursor_rect, grid->GetCursorShape());
     this->DrawBackgroundRect(cursor_fg_rect, &cursor_hl_attribs);
 
     if (grid->GetCursorShape() == CursorShape::Block)
@@ -933,13 +935,14 @@ void Renderer::UpdateGuiFont(const char *guifont, size_t strlen)
     UpdateFont(font_size, guifont, static_cast<int>(font_str_len));
 }
 
-void Renderer::DrawBackgroundRect()
+void Renderer::DrawBackgroundRect(int rows, int cols,
+                                  const HighlightAttribute *hl)
 {
     D2D1_RECT_F rect{.left = 0.0f,
                      .top = 0.0f,
-                     .right = _grid->Cols() * _dwrite->_font_width,
-                     .bottom = _grid->Rows() * _dwrite->_font_height};
-    this->DrawBackgroundRect(rect, &_grid->hl(0));
+                     .right = cols * _dwrite->_font_width,
+                     .bottom = rows * _dwrite->_font_height};
+    this->DrawBackgroundRect(rect, hl);
 }
 
 void Renderer::StartDraw()
@@ -989,22 +992,16 @@ PixelSize Renderer::GridToPixelSize(int rows, int cols)
                      .height = adjusted_rect.bottom - adjusted_rect.top};
 }
 
-bool Renderer::SetDpiScale(float current_dpi, int *pRows, int *pCols)
+D2D1_SIZE_U Renderer::SetDpiScale(float current_dpi)
 {
     _dwrite->SetDpiScale(current_dpi);
-    auto [rows, cols] = GridSize();
-    *pRows = rows;
-    *pCols = cols;
-    return rows != _grid->Rows() || cols != _grid->Cols();
+    return FontSize();
 }
 
-bool Renderer::ResizeFont(float size, int *pRows, int *pCols)
+D2D1_SIZE_U Renderer::ResizeFont(float size)
 {
     _dwrite->ResizeFont(size);
-    auto [rows, cols] = GridSize();
-    *pRows = rows;
-    *pCols = cols;
-    return rows != _grid->Rows() || cols != _grid->Cols();
+    return FontSize();
 }
 
 HRESULT Renderer::DrawGlyphRun(
@@ -1026,7 +1023,7 @@ HRESULT Renderer::DrawGlyphRun(
     else
     {
         _device->_drawing_effect_brush->SetColor(
-            D2D1::ColorF(_grid->hl(0).foreground));
+            D2D1::ColorF(_defaultHL->foreground));
     }
 
     DWRITE_GLYPH_IMAGE_FORMATS supported_formats =
@@ -1144,7 +1141,7 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
     }
     else
     {
-        _device->_temp_brush->SetColor(D2D1::ColorF(_grid->hl(0).special));
+        _device->_temp_brush->SetColor(D2D1::ColorF(_defaultHL->special));
     }
 
     D2D1_RECT_F rect =

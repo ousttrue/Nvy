@@ -11,6 +11,7 @@ target_sources(Nvy PUBLIC
 
 target_link_libraries(Nvy PUBLIC 
     mpack
+    plog
     user32.lib 
     d3d11.lib 
     d2d1.lib 

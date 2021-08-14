@@ -945,9 +945,21 @@ struct CommandLine
     }
 };
 
+#include <plog/Log.h>
+#include <plog/Init.h>
+#include <plog/Formatters/TxtFormatter.h>
+
+#include <plog/Appenders/DebugOutputAppender.h>
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
 {
+    static plog::DebugOutputAppender<plog::TxtFormatter> debugOutputAppender;
+    plog::init(plog::verbose, &debugOutputAppender);
+
+    PLOGD << "Hello log!";             // short macro
+    PLOG_DEBUG << "Hello log!";        // long macro
+    PLOG(plog::debug) << "Hello log!"; // function-style macro
+
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 
     auto cmd = CommandLine::Get();

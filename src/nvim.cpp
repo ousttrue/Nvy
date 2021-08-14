@@ -3,7 +3,7 @@
 #include "window_messages.h"
 #include <plog/Log.h>
 #include <msgpackpp.h>
-
+#include <stdint.h>
 
 constexpr int Megabytes(int n)
 {
@@ -178,6 +178,28 @@ public:
             mpack_tree_parse(tree);
             if (mpack_tree_error(tree) != mpack_ok)
             {
+                break;
+            }
+
+            auto u = msgpackpp::parser((const uint8_t *)tree->data,
+                                       tree->data_length);
+            switch (u[0].get_number<int>())
+            {
+            case 0:
+                // request [0, msgid, method, params]
+                PLOG_DEBUG << "[request#" << u[1].get_number<int>() << ", "
+                           << u[2].get_string() << "]";
+                break;
+            case 1:
+                // response [1, msgid, error, result]
+                PLOG_DEBUG << "[response#" << u[1].get_number<int>() << "]";
+                break;
+            case 2:
+                // notify [2, method, params]
+                PLOG_DEBUG << "[notify, " << u[1].get_string() << "]";
+                break;
+            default:
+                assert(false);
                 break;
             }
 

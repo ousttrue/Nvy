@@ -2,6 +2,9 @@
 #include <cassert>
 #include <mpack.h>
 
+#include <plog/Log.h>
+#include <msgpackpp.h>
+
 inline int MPackIntFromArray(mpack_node_t arr, int index) {
 	return static_cast<int>(mpack_node_array_at(arr, index).data->value.i);
 }
@@ -60,6 +63,9 @@ inline void MPackStartNotification(const char *notification, mpack_writer_t *wri
 }
 
 inline void MPackSendData(HANDLE handle, void *buffer, size_t size) {
+    auto u = msgpackpp::parser((const uint8_t *)buffer, size);
+    PLOG_DEBUG << u.to_json();
+
 	DWORD bytes_written;
 	bool success = WriteFile(handle, buffer, static_cast<DWORD>(size), &bytes_written, nullptr);
 	assert(success);

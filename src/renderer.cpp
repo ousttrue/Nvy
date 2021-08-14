@@ -7,6 +7,7 @@
 #include <d2d1_3.h>
 #include <tuple>
 #include <vector>
+#include <algorithm>
 using namespace Microsoft::WRL;
 
 struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect
@@ -280,7 +281,7 @@ public:
 
     void UpdateFontMetrics(float font_size, const char *font_string, int strlen)
     {
-        font_size = max(5.0f, min(font_size, 150.0f));
+        font_size = std::max(5.0f, std::min(font_size, 150.0f));
         this->_last_requested_font_size = font_size;
 
         ComPtr<IDWriteFontCollection> font_collection;
@@ -1149,7 +1150,7 @@ HRESULT Renderer::DrawUnderline(float baseline_origin_x,
                     .top = baseline_origin_y + underline->offset,
                     .right = baseline_origin_x + underline->width,
                     .bottom = baseline_origin_y + underline->offset +
-                              max(underline->thickness, 1.0f)};
+                              std::max(underline->thickness, 1.0f)};
 
     _device->_d2d_context->FillRectangle(rect, _device->_temp_brush.Get());
     return hr;

@@ -1,6 +1,9 @@
 #include "nvim.h"
 #include "mpack_helper.h"
 #include "window_messages.h"
+#include <plog/Log.h>
+#include <msgpackpp.h>
+
 
 constexpr int Megabytes(int n)
 {

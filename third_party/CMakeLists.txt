@@ -1,1 +1,1 @@
-subdirs(mpack plog json)
+subdirs(mpack plog msgpackpp)

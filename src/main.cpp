@@ -7,6 +7,10 @@
 #include "window_messages.h"
 #include <dwmapi.h>
 #include <shellscalingapi.h>
+#include <plog/Log.h>
+#include <plog/Init.h>
+#include <plog/Formatters/TxtFormatter.h>
+#include <plog/Appenders/DebugOutputAppender.h>
 
 struct Context
 {
@@ -945,11 +949,7 @@ struct CommandLine
     }
 };
 
-#include <plog/Log.h>
-#include <plog/Init.h>
-#include <plog/Formatters/TxtFormatter.h>
 
-#include <plog/Appenders/DebugOutputAppender.h>
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
 {

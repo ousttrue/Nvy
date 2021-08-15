@@ -1,1 +1,1 @@
-subdirs(mpack plog msgpackpp)
+subdirs(mpack plog msgpackpp asio)

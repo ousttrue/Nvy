@@ -1,6 +1,9 @@
 SET(TARGET_NAME coroutine_sample)
 
-add_executable(${TARGET_NAME} WIN32
+add_executable(${TARGET_NAME}
     main.cpp
-    window.cpp
+)
+target_compile_options(${TARGET_NAME}
+PRIVATE
+    /await
 )

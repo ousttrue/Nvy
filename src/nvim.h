@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include <Windows.h>
+#include <memory>
 #include <vector>
 
 enum NvimRequest : uint8_t
@@ -41,12 +41,14 @@ enum class MouseAction
 };
 constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
+using NvimMessage = std::shared_ptr<struct mpack_tree_t>;
+
 class Nvim
 {
     class NvimImpl *_impl;
 
 public:
-    Nvim(wchar_t *command_line, HWND hwnd);
+    Nvim(wchar_t *command_line);
     ~Nvim();
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;
@@ -63,4 +65,6 @@ public:
     bool ProcessKeyDown(int virtual_key);
     void OpenFile(const wchar_t *file_name);
     NvimRequest GetRequestFromID(size_t id) const;
+
+    bool TryDequeue(NvimMessage *msg);
 };

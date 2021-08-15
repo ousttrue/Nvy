@@ -1,9 +1,13 @@
 #include "nvim.h"
+#include "mpack.h"
 #include "mpack_helper.h"
 #include "window_messages.h"
 #include <plog/Log.h>
 #include <msgpackpp.h>
 #include <stdint.h>
+#include <queue>
+#include <mutex>
+#include <Windows.h>
 
 constexpr int Megabytes(int n)
 {
@@ -25,8 +29,6 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count)
 
 class NvimImpl
 {
-    HWND hwnd = nullptr;
-
     HANDLE stdin_read = nullptr;
     HANDLE stdin_write = nullptr;
     HANDLE stdout_read = nullptr;
@@ -35,6 +37,9 @@ class NvimImpl
 
     int64_t next_msg_id = 0;
     std::vector<NvimRequest> msg_id_to_method;
+
+    std::queue<NvimMessage> _queue;
+    std::mutex _mutex;
 
 public:
     static DWORD WINAPI NvimMessageHandler(LPVOID param)
@@ -49,7 +54,7 @@ public:
         return nvim->ProcessMonitor();
     }
 
-    NvimImpl(HWND hwnd, wchar_t *command_line) : hwnd(hwnd)
+    NvimImpl(wchar_t *command_line)
     {
         HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info{
@@ -129,6 +134,26 @@ public:
         }
     }
 
+    void Enqueue(const NvimMessage &msg)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+
+        _queue.push(msg);
+    }
+    bool TryDequeue(NvimMessage *msg)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+
+        if (_queue.empty())
+        {
+            return false;
+        }
+
+        *msg = _queue.front();
+        _queue.pop();
+        return true;
+    }
+
     NvimRequest GetRequestFromID(size_t id) const
     {
         assert(id <= this->next_msg_id);
@@ -168,15 +193,19 @@ public:
 
     DWORD MessageHandler()
     {
-        mpack_tree_t *tree =
-            static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
-        mpack_tree_init_stream(tree, ReadFromNvim, this->stdout_read,
-                               Megabytes(20), 1024 * 1024);
-
         while (true)
         {
-            mpack_tree_parse(tree);
-            if (mpack_tree_error(tree) != mpack_ok)
+            auto tree = NvimMessage(
+                static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t))),
+                [](mpack_tree_t *p) {
+                    mpack_tree_destroy(p);
+                    free(p);
+                });
+            mpack_tree_init_stream(tree.get(), ReadFromNvim, this->stdout_read,
+                                   Megabytes(20), 1024 * 1024);
+
+            mpack_tree_parse(tree.get());
+            if (mpack_tree_error(tree.get()) != mpack_ok)
             {
                 break;
             }
@@ -203,14 +232,10 @@ public:
                 break;
             }
 
-            // Blocking, dubious thread safety. Seems to work though...
-            SendMessage(this->hwnd, WM_NVIM_MESSAGE,
-                        reinterpret_cast<WPARAM>(tree), 0);
+            Enqueue(tree);
         }
 
-        mpack_tree_destroy(tree);
-        free(tree);
-        PostMessage(this->hwnd, WM_DESTROY, 0, 0);
+        Enqueue(nullptr);
         return 0;
     }
 
@@ -229,7 +254,7 @@ public:
                 break;
             }
         }
-        PostMessage(this->hwnd, WM_DESTROY, 0, 0);
+        Enqueue(nullptr);
         return 0;
     }
 
@@ -239,8 +264,8 @@ public:
     }
 };
 
-Nvim::Nvim(wchar_t *command_line, HWND hwnd)
-    : _impl(new NvimImpl(hwnd, command_line))
+Nvim::Nvim(wchar_t *command_line)
+    : _impl(new NvimImpl(command_line))
 {
 }
 
@@ -830,4 +855,9 @@ void Nvim::OpenFile(const wchar_t *file_name)
 NvimRequest Nvim::GetRequestFromID(size_t id) const
 {
     return _impl->GetRequestFromID(id);
+}
+
+bool Nvim::TryDequeue(NvimMessage *msg)
+{
+    return _impl->TryDequeue(msg);
 }

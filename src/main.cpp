@@ -632,12 +632,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         PostQuitMessage(0);
     }
         return 0;
-    case WM_NVIM_MESSAGE:
-    {
-        mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
-        context->ProcessMPackMessage(tree);
-    }
-        return 0;
     case WM_RENDERER_FONT_UPDATE:
     {
         auto size = context->renderer->Size();
@@ -949,7 +943,6 @@ struct CommandLine
     }
 };
 
-
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     PWSTR p_cmd_line, int n_cmd_show)
 {
@@ -990,7 +983,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     {
         return 1;
     }
-    Nvim nvim(cmd.nvim_command_line, hwnd);
+    Nvim nvim(cmd.nvim_command_line);
     context.nvim = &nvim;
     context._grid.OnSizeChanged([&nvim](const GridSize &size) {
         nvim.SendResize(size.rows, size.cols);
@@ -1010,22 +1003,55 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     MSG msg;
     uint32_t previous_width = 0, previous_height = 0;
-    while (GetMessage(&msg, 0, 0, 0))
+
+    auto lastTime = timeGetTime();
+    while (true)
     {
-        // TranslateMessage(&msg);
-        DispatchMessage(&msg);
-        if (previous_width != context.saved_window_width ||
-            previous_height != context.saved_window_height)
+        // windows msg
+        while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE))
         {
-            previous_width = context.saved_window_width;
-            previous_height = context.saved_window_height;
-            auto font_size = context.renderer->FontSize();
-            auto [rows, cols] = GridSize::FromWindowSize(
-                context.saved_window_width, context.saved_window_height,
-                font_size.width, font_size.height);
-            context.renderer->Resize(context.saved_window_width,
-                                     context.saved_window_height);
-            context.nvim->SendResize(rows, cols);
+
+            if (!GetMessage(&msg, NULL, 0, 0))
+            {
+                return msg.wParam;
+            }
+
+            // TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            if (previous_width != context.saved_window_width ||
+                previous_height != context.saved_window_height)
+            {
+                previous_width = context.saved_window_width;
+                previous_height = context.saved_window_height;
+                auto font_size = context.renderer->FontSize();
+                auto [rows, cols] = GridSize::FromWindowSize(
+                    context.saved_window_width, context.saved_window_height,
+                    font_size.width, font_size.height);
+                context.renderer->Resize(context.saved_window_width,
+                                         context.saved_window_height);
+                context.nvim->SendResize(rows, cols);
+            }
+        }
+
+        // nvim
+        NvimMessage nvimMessage;
+        while (nvim.TryDequeue(&nvimMessage))
+        {
+            if (!nvimMessage)
+            {
+                // nvim exited
+                PostMessage(hwnd, WM_DESTROY, 0, 0);
+                break;
+            }
+            context.ProcessMPackMessage(nvimMessage.get());
+        }
+
+        auto now = timeGetTime();
+        auto delta = now - lastTime;
+        lastTime = now;
+        if (delta < 30)
+        {
+            Sleep(30 - delta);
         }
     }
 

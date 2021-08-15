@@ -19,6 +19,7 @@ target_link_libraries(Nvy PUBLIC
     dwrite.lib
     Shcore.lib
     Dwmapi.lib
+    winmm.lib
 )
 
 target_compile_definitions(Nvy PUBLIC

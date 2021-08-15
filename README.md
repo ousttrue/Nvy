@@ -3,14 +3,20 @@
 [Nvy](./README_original.md)
 
 ```
-+----+ update  +----+
-|NVIM|-------->|grid|
-+----+         +----+
- A keyboard      |render
- | resize        v
-+----+         +------------+
-|HWND|         |RenderTarget|
-+----+         +------------+
++-frontend-+                  +-nvim-+
+|HWND      |nvim_ui_attach    |      |
+| keyboard |nvim_input        |      |
+| mouse    |----------------->|      |
+|Grid      |nvim_ui_try_resize|      |
+| rows,cols|----------------->|      |
+|          |            redraw|      |
+| +---------<-----------------|      |
++-|--------+                  +------+
+  |      ^ RectSize
+  V      | FontSize
++---------------+
+|bitmap renderer|
++---------------+
 ```
 
 ## nvim api

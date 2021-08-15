@@ -5,7 +5,10 @@
     ],
     "cSpell.words": [
         "HWND",
+        "LPARAM",
+        "LRESULT",
         "Nvim",
+        "PWSTR",
         "mpack"
     ],
 }

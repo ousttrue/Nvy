@@ -24,6 +24,7 @@ target_link_libraries(Nvy PUBLIC
 
 target_compile_definitions(Nvy PUBLIC
     UNICODE
+    NOMINMAX
 )
 
 if(MSVC)

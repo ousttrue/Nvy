@@ -3,7 +3,7 @@
 #include "mpack_helper.h"
 #include "window_messages.h"
 #include <plog/Log.h>
-#include <msgpackpp.h>
+#include <msgpackpp/msgpackpp.h>
 #include <stdint.h>
 #include <queue>
 #include <mutex>

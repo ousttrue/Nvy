@@ -3,7 +3,7 @@
 #include <mpack.h>
 #include <Windows.h>
 #include <plog/Log.h>
-#include <msgpackpp.h>
+#include <msgpackpp/msgpackpp.h>
 
 inline int MPackIntFromArray(mpack_node_t arr, int index) {
 	return static_cast<int>(mpack_node_array_at(arr, index).data->value.i);

@@ -64,6 +64,610 @@ struct Context
         }
     }
 
+    std::vector<char> ParseConfig(mpack_node_t *config_node)
+    {
+        std::vector<char> guifont_out;
+        char path[MAX_PATH];
+        const char *config_path = mpack_node_str(*config_node);
+        size_t config_path_strlen = mpack_node_strlen(*config_node);
+        strncpy_s(path, MAX_PATH, config_path, config_path_strlen);
+        strcat_s(path, MAX_PATH - config_path_strlen - 1, "\\init.vim");
+
+        HANDLE config_file =
+            CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+        if (config_file == INVALID_HANDLE_VALUE)
+        {
+            return guifont_out;
+        }
+
+        char *buffer;
+        LARGE_INTEGER file_size;
+        if (!GetFileSizeEx(config_file, &file_size))
+        {
+            CloseHandle(config_file);
+            return guifont_out;
+        }
+        buffer = static_cast<char *>(malloc(file_size.QuadPart));
+
+        DWORD bytes_read;
+        if (!ReadFile(config_file, buffer, file_size.QuadPart, &bytes_read,
+                      NULL))
+        {
+            CloseHandle(config_file);
+            free(buffer);
+            return guifont_out;
+        }
+        CloseHandle(config_file);
+
+        char *strtok_context;
+        char *line = strtok_s(buffer, "\r\n", &strtok_context);
+        while (line)
+        {
+            char *guifont = strstr(line, "set guifont=");
+            if (guifont)
+            {
+                // Check if we're inside a comment
+                int leading_count = guifont - line;
+                bool inside_comment = false;
+                for (int i = 0; i < leading_count; ++i)
+                {
+                    if (line[i] == '"')
+                    {
+                        inside_comment = !inside_comment;
+                    }
+                }
+                if (!inside_comment)
+                {
+                    guifont_out.clear();
+
+                    int line_offset = (guifont - line + strlen("set guifont="));
+                    int guifont_strlen = strlen(line) - line_offset;
+                    int escapes = 0;
+                    for (int i = 0; i < guifont_strlen; ++i)
+                    {
+                        if (line[line_offset + i] == '\\' &&
+                            i < (guifont_strlen - 1) &&
+                            line[line_offset + i + 1] == ' ')
+                        {
+                            guifont_out.push_back(' ');
+                            ++i;
+                            continue;
+                        }
+                        guifont_out.push_back(line[i + line_offset]);
+                    }
+                    guifont_out.push_back('\0');
+                }
+            }
+            line = strtok_s(NULL, "\r\n", &strtok_context);
+        }
+
+        free(buffer);
+        return guifont_out;
+    }
+
+    void SendUIAttach(int grid_rows, int grid_cols)
+    {
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+
+        // Send UI attach notification
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+        MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_attach],
+                               &writer);
+        mpack_start_array(&writer, 3);
+        mpack_write_int(&writer, grid_cols);
+        mpack_write_int(&writer, grid_rows);
+        mpack_start_map(&writer, 1);
+        mpack_write_cstr(&writer, "ext_linegrid");
+        mpack_write_true(&writer);
+        mpack_finish_map(&writer);
+        mpack_finish_array(&writer);
+        size_t size = MPackFinishMessage(&writer);
+
+        nvim->Send(data, size);
+    }
+
+    void SendResize(int grid_rows, int grid_cols)
+    {
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+
+        MPackStartNotification(
+            NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_try_resize], &writer);
+        mpack_start_array(&writer, 2);
+        mpack_write_int(&writer, grid_cols);
+        mpack_write_int(&writer, grid_rows);
+        mpack_finish_array(&writer);
+        size_t size = MPackFinishMessage(&writer);
+
+        nvim->Send(data, size);
+    }
+
+    void SendChar(wchar_t input_char)
+    {
+        // If the space is simply a regular space,
+        // simply send the modified input
+        if (input_char == VK_SPACE)
+        {
+            NvimSendModifiedInput("Space", true);
+            return;
+        }
+
+        char utf8_encoded[64]{};
+        if (!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL))
+        {
+            return;
+        }
+        WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL,
+                            NULL);
+
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+        MPackStartRequest(nvim->RegisterRequest(nvim_input),
+                          NVIM_REQUEST_NAMES[nvim_input], &writer);
+        mpack_start_array(&writer, 1);
+        mpack_write_cstr(&writer, utf8_encoded);
+        mpack_finish_array(&writer);
+        size_t size = MPackFinishMessage(&writer);
+
+        nvim->Send(data, size);
+    }
+
+    void SendSysChar(wchar_t input_char)
+    {
+        char utf8_encoded[64]{};
+        if (!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL))
+        {
+            return;
+        }
+        WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL,
+                            NULL);
+
+        NvimSendModifiedInput(utf8_encoded, true);
+    }
+
+    void NvimSendModifiedInput(const char *input, bool virtual_key)
+    {
+        bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+        bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+        bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+
+        constexpr int MAX_INPUT_STRING_SIZE = 64;
+        char input_string[MAX_INPUT_STRING_SIZE];
+
+        snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s%s>",
+                 ctrl_down ? "C-" : "", shift_down ? "S-" : "",
+                 alt_down ? "M-" : "", input);
+
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+        MPackStartRequest(nvim->RegisterRequest(nvim_input),
+                          NVIM_REQUEST_NAMES[nvim_input], &writer);
+        mpack_start_array(&writer, 1);
+        mpack_write_cstr(&writer, input_string);
+        mpack_finish_array(&writer);
+        size_t size = MPackFinishMessage(&writer);
+        nvim->Send(data, size);
+    }
+
+    void SendInput(const char *input_chars)
+    {
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+
+        MPackStartRequest(nvim->RegisterRequest(nvim_input),
+                          NVIM_REQUEST_NAMES[nvim_input], &writer);
+        mpack_start_array(&writer, 1);
+        mpack_write_cstr(&writer, input_chars);
+        mpack_finish_array(&writer);
+        size_t size = MPackFinishMessage(&writer);
+        nvim->Send(data, size);
+    }
+
+    void SendMouseInput(MouseButton button, MouseAction action,
+                              int mouse_row, int mouse_col)
+    {
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+        MPackStartRequest(nvim->RegisterRequest(nvim_input_mouse),
+                          NVIM_REQUEST_NAMES[nvim_input_mouse], &writer);
+        mpack_start_array(&writer, 6);
+
+        switch (button)
+        {
+        case MouseButton::Left:
+        {
+            mpack_write_cstr(&writer, "left");
+        }
+        break;
+        case MouseButton::Right:
+        {
+            mpack_write_cstr(&writer, "right");
+        }
+        break;
+        case MouseButton::Middle:
+        {
+            mpack_write_cstr(&writer, "middle");
+        }
+        break;
+        case MouseButton::Wheel:
+        {
+            mpack_write_cstr(&writer, "wheel");
+        }
+        break;
+        }
+        switch (action)
+        {
+        case MouseAction::Press:
+        {
+            mpack_write_cstr(&writer, "press");
+        }
+        break;
+        case MouseAction::Drag:
+        {
+            mpack_write_cstr(&writer, "drag");
+        }
+        break;
+        case MouseAction::Release:
+        {
+            mpack_write_cstr(&writer, "release");
+        }
+        break;
+        case MouseAction::MouseWheelUp:
+        {
+            mpack_write_cstr(&writer, "up");
+        }
+        break;
+        case MouseAction::MouseWheelDown:
+        {
+            mpack_write_cstr(&writer, "down");
+        }
+        break;
+        case MouseAction::MouseWheelLeft:
+        {
+            mpack_write_cstr(&writer, "left");
+        }
+        break;
+        case MouseAction::MouseWheelRight:
+        {
+            mpack_write_cstr(&writer, "right");
+        }
+        break;
+        }
+
+        bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+        bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+        bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+        constexpr int MAX_INPUT_STRING_SIZE = 64;
+        char input_string[MAX_INPUT_STRING_SIZE];
+        snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s%s%s",
+                 ctrl_down ? "C-" : "", shift_down ? "S-" : "",
+                 alt_down ? "M-" : "");
+        mpack_write_cstr(&writer, input_string);
+
+        mpack_write_i64(&writer, 0);
+        mpack_write_i64(&writer, mouse_row);
+        mpack_write_i64(&writer, mouse_col);
+        mpack_finish_array(&writer);
+
+        size_t size = MPackFinishMessage(&writer);
+        nvim->Send(data, size);
+    }
+
+    bool ProcessKeyDown(int virtual_key)
+    {
+        const char *key;
+        switch (virtual_key)
+        {
+        case VK_BACK:
+        {
+            key = "BS";
+        }
+        break;
+        case VK_TAB:
+        {
+            key = "Tab";
+        }
+        break;
+        case VK_RETURN:
+        {
+            key = "CR";
+        }
+        break;
+        case VK_ESCAPE:
+        {
+            key = "Esc";
+        }
+        break;
+        case VK_PRIOR:
+        {
+            key = "PageUp";
+        }
+        break;
+        case VK_NEXT:
+        {
+            key = "PageDown";
+        }
+        break;
+        case VK_HOME:
+        {
+            key = "Home";
+        }
+        break;
+        case VK_END:
+        {
+            key = "End";
+        }
+        break;
+        case VK_LEFT:
+        {
+            key = "Left";
+        }
+        break;
+        case VK_UP:
+        {
+            key = "Up";
+        }
+        break;
+        case VK_RIGHT:
+        {
+            key = "Right";
+        }
+        break;
+        case VK_DOWN:
+        {
+            key = "Down";
+        }
+        break;
+        case VK_INSERT:
+        {
+            key = "Insert";
+        }
+        break;
+        case VK_DELETE:
+        {
+            key = "Del";
+        }
+        break;
+        case VK_NUMPAD0:
+        {
+            key = "k0";
+        }
+        break;
+        case VK_NUMPAD1:
+        {
+            key = "k1";
+        }
+        break;
+        case VK_NUMPAD2:
+        {
+            key = "k2";
+        }
+        break;
+        case VK_NUMPAD3:
+        {
+            key = "k3";
+        }
+        break;
+        case VK_NUMPAD4:
+        {
+            key = "k4";
+        }
+        break;
+        case VK_NUMPAD5:
+        {
+            key = "k5";
+        }
+        break;
+        case VK_NUMPAD6:
+        {
+            key = "k6";
+        }
+        break;
+        case VK_NUMPAD7:
+        {
+            key = "k7";
+        }
+        break;
+        case VK_NUMPAD8:
+        {
+            key = "k8";
+        }
+        break;
+        case VK_NUMPAD9:
+        {
+            key = "k9";
+        }
+        break;
+        case VK_MULTIPLY:
+        {
+            key = "kMultiply";
+        }
+        break;
+        case VK_ADD:
+        {
+            key = "kPlus";
+        }
+        break;
+        case VK_SEPARATOR:
+        {
+            key = "kComma";
+        }
+        break;
+        case VK_SUBTRACT:
+        {
+            key = "kMinus";
+        }
+        break;
+        case VK_DECIMAL:
+        {
+            key = "kPoint";
+        }
+        break;
+        case VK_DIVIDE:
+        {
+            key = "kDivide";
+        }
+        break;
+        case VK_F1:
+        {
+            key = "F1";
+        }
+        break;
+        case VK_F2:
+        {
+            key = "F2";
+        }
+        break;
+        case VK_F3:
+        {
+            key = "F3";
+        }
+        break;
+        case VK_F4:
+        {
+            key = "F4";
+        }
+        break;
+        case VK_F5:
+        {
+            key = "F5";
+        }
+        break;
+        case VK_F6:
+        {
+            key = "F6";
+        }
+        break;
+        case VK_F7:
+        {
+            key = "F7";
+        }
+        break;
+        case VK_F8:
+        {
+            key = "F8";
+        }
+        break;
+        case VK_F9:
+        {
+            key = "F9";
+        }
+        break;
+        case VK_F10:
+        {
+            key = "F10";
+        }
+        break;
+        case VK_F11:
+        {
+            key = "F11";
+        }
+        break;
+        case VK_F12:
+        {
+            key = "F12";
+        }
+        break;
+        case VK_F13:
+        {
+            key = "F13";
+        }
+        break;
+        case VK_F14:
+        {
+            key = "F14";
+        }
+        break;
+        case VK_F15:
+        {
+            key = "F15";
+        }
+        break;
+        case VK_F16:
+        {
+            key = "F16";
+        }
+        break;
+        case VK_F17:
+        {
+            key = "F17";
+        }
+        break;
+        case VK_F18:
+        {
+            key = "F18";
+        }
+        break;
+        case VK_F19:
+        {
+            key = "F19";
+        }
+        break;
+        case VK_F20:
+        {
+            key = "F20";
+        }
+        break;
+        case VK_F21:
+        {
+            key = "F21";
+        }
+        break;
+        case VK_F22:
+        {
+            key = "F22";
+        }
+        break;
+        case VK_F23:
+        {
+            key = "F23";
+        }
+        break;
+        case VK_F24:
+        {
+            key = "F24";
+        }
+        break;
+        default:
+        {
+        }
+            return false;
+        }
+
+        NvimSendModifiedInput(key, true);
+        return true;
+    }
+
+    void OpenFile(const wchar_t *file_name)
+    {
+        char utf8_encoded[MAX_PATH]{};
+        WideCharToMultiByte(CP_UTF8, 0, file_name, -1, utf8_encoded, MAX_PATH,
+                            NULL, NULL);
+
+        char file_command[MAX_PATH + 2] = {};
+        strcpy_s(file_command, MAX_PATH, "e ");
+        strcat_s(file_command, MAX_PATH - 3, utf8_encoded);
+
+        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+        mpack_writer_t writer;
+        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+        MPackStartRequest(nvim->RegisterRequest(nvim_command),
+                          NVIM_REQUEST_NAMES[nvim_command], &writer);
+        mpack_start_array(&writer, 1);
+        mpack_write_cstr(&writer, file_command);
+        mpack_finish_array(&writer);
+        size_t size = MPackFinishMessage(&writer);
+        nvim->Send(data, size);
+    }
+
     void ProcessMPackMessage(mpack_tree_t *tree)
     {
         MPackMessageResult result = MPackExtractMessageResult(tree);
@@ -86,7 +690,7 @@ struct Context
             break;
             case NvimRequest::nvim_eval:
             {
-                auto guifont_buffer = nvim->ParseConfig(&result.params);
+                auto guifont_buffer = ParseConfig(&result.params);
                 if (!guifont_buffer.empty())
                 {
                     renderer->UpdateGuiFont(guifont_buffer.data(),
@@ -110,7 +714,7 @@ struct Context
                 auto fontSize = renderer->FontSize();
                 auto grid = GridSize::FromWindowSize(
                     size.width, size.height, fontSize.width, fontSize.height);
-                nvim->SendUIAttach(grid.rows, grid.cols);
+                SendUIAttach(grid.rows, grid.cols);
 
                 if (start_maximized)
                 {
@@ -354,7 +958,8 @@ struct Context
             mpack_node_t attrib_map = mpack_node_array_at(
                 mpack_node_array_at(highlight_attribs, i), 1);
 
-            const auto SetColor = [&](const char *name, uint32_t *color) {
+            const auto SetColor = [&](const char *name, uint32_t *color)
+            {
                 mpack_node_t color_node =
                     mpack_node_map_cstr_optional(attrib_map, name);
                 if (!mpack_node_is_missing(color_node))
@@ -370,8 +975,9 @@ struct Context
             SetColor("background", &_grid.hl(attrib_index).background);
             SetColor("special", &_grid.hl(attrib_index).special);
 
-            const auto SetFlag = [&](const char *flag_name,
-                                     HighlightAttributeFlags flag) {
+            const auto SetFlag =
+                [&](const char *flag_name, HighlightAttributeFlags flag)
+            {
                 mpack_node_t flag_node =
                     mpack_node_map_cstr_optional(attrib_map, flag_name);
                 if (!mpack_node_is_missing(flag_node))
@@ -621,7 +1227,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 size.width, size.height, fontSize.width, fontSize.height);
             if (context->_grid.Rows() != rows || context->_grid.Cols() != rows)
             {
-                context->nvim->SendResize(rows, cols);
+                context->SendResize(rows, cols);
             }
             context->saved_dpi_scaling = current_dpi;
         }
@@ -638,7 +1244,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         auto fontSize = context->renderer->FontSize();
         auto [rows, cols] = GridSize::FromWindowSize(
             size.width, size.height, fontSize.width, fontSize.height);
-        context->nvim->SendResize(rows, cols);
+        context->SendResize(rows, cols);
     }
         return 0;
     case WM_DEADCHAR:
@@ -653,16 +1259,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         // Special case for <LT>
         if (wparam == 0x3C)
         {
-            context->nvim->SendInput("<LT>");
+            context->SendInput("<LT>");
             return 0;
         }
-        context->nvim->SendChar(static_cast<wchar_t>(wparam));
+        context->SendChar(static_cast<wchar_t>(wparam));
     }
         return 0;
     case WM_SYSCHAR:
     {
         context->dead_char_pending = false;
-        context->nvim->SendSysChar(static_cast<wchar_t>(wparam));
+        context->SendSysChar(static_cast<wchar_t>(wparam));
     }
         return 0;
     case WM_KEYDOWN:
@@ -698,7 +1304,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             // If none of the special keys were hit, process in
             // WM_CHAR
-            if (!context->nvim->ProcessKeyDown(static_cast<int>(wparam)))
+            if (!context->ProcessKeyDown(static_cast<int>(wparam)))
             {
                 TranslateMessage(&current_msg);
             }
@@ -718,21 +1324,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             {
             case MK_LBUTTON:
             {
-                context->nvim->SendMouseInput(MouseButton::Left,
+                context->SendMouseInput(MouseButton::Left,
                                               MouseAction::Drag, grid_pos.row,
                                               grid_pos.col);
             }
             break;
             case MK_MBUTTON:
             {
-                context->nvim->SendMouseInput(MouseButton::Middle,
+                context->SendMouseInput(MouseButton::Middle,
                                               MouseAction::Drag, grid_pos.row,
                                               grid_pos.col);
             }
             break;
             case MK_RBUTTON:
             {
-                context->nvim->SendMouseInput(MouseButton::Right,
+                context->SendMouseInput(MouseButton::Right,
                                               MouseAction::Drag, grid_pos.row,
                                               grid_pos.col);
             }
@@ -755,32 +1361,32 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             cursor_pos.x, cursor_pos.y, fontSize.width, fontSize.height);
         if (msg == WM_LBUTTONDOWN)
         {
-            context->nvim->SendMouseInput(MouseButton::Left, MouseAction::Press,
+            context->SendMouseInput(MouseButton::Left, MouseAction::Press,
                                           row, col);
         }
         else if (msg == WM_MBUTTONDOWN)
         {
-            context->nvim->SendMouseInput(MouseButton::Middle,
+            context->SendMouseInput(MouseButton::Middle,
                                           MouseAction::Press, row, col);
         }
         else if (msg == WM_RBUTTONDOWN)
         {
-            context->nvim->SendMouseInput(MouseButton::Right,
+            context->SendMouseInput(MouseButton::Right,
                                           MouseAction::Press, row, col);
         }
         else if (msg == WM_LBUTTONUP)
         {
-            context->nvim->SendMouseInput(MouseButton::Left,
+            context->SendMouseInput(MouseButton::Left,
                                           MouseAction::Release, row, col);
         }
         else if (msg == WM_MBUTTONUP)
         {
-            context->nvim->SendMouseInput(MouseButton::Middle,
+            context->SendMouseInput(MouseButton::Middle,
                                           MouseAction::Release, row, col);
         }
         else if (msg == WM_RBUTTONUP)
         {
-            context->nvim->SendMouseInput(MouseButton::Right,
+            context->SendMouseInput(MouseButton::Right,
                                           MouseAction::Release, row, col);
         }
     }
@@ -790,12 +1396,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         int button = GET_XBUTTON_WPARAM(wparam);
         if (button == XBUTTON1 && !context->xbuttons[0])
         {
-            context->nvim->SendInput("<C-o>");
+            context->SendInput("<C-o>");
             context->xbuttons[0] = true;
         }
         else if (button == XBUTTON2 && !context->xbuttons[1])
         {
-            context->nvim->SendInput("<C-i>");
+            context->SendInput("<C-i>");
             context->xbuttons[1] = true;
         }
     }
@@ -840,14 +1446,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 size.width, size.height, fontSize.width, fontSize.height);
             if (context->_grid.Rows() != rows || context->_grid.Cols() != rows)
             {
-                context->nvim->SendResize(rows, cols);
+                context->SendResize(rows, cols);
             }
         }
         else
         {
             for (int i = 0; i < abs(scroll_amount); ++i)
             {
-                context->nvim->SendMouseInput(MouseButton::Wheel, action, row,
+                context->SendMouseInput(MouseButton::Wheel, action, row,
                                               col);
             }
         }
@@ -862,7 +1468,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         {
             DragQueryFileW(reinterpret_cast<HDROP>(wparam), i, file_to_open,
                            MAX_PATH);
-            context->nvim->OpenFile(file_to_open);
+            context->OpenFile(file_to_open);
         }
     }
         return 0;
@@ -985,9 +1591,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
     Nvim nvim(cmd.nvim_command_line);
     context.nvim = &nvim;
-    context._grid.OnSizeChanged([&nvim](const GridSize &size) {
-        nvim.SendResize(size.rows, size.cols);
-    });
+    context._grid.OnSizeChanged([&context](const GridSize &size)
+                                { context.SendResize(size.rows, size.cols); });
     context.hwnd = hwnd;
     RECT window_rect;
     DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
@@ -1029,7 +1634,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                     font_size.width, font_size.height);
                 context.renderer->Resize(context.saved_window_width,
                                          context.saved_window_height);
-                context.nvim->SendResize(rows, cols);
+                context.SendResize(rows, cols);
             }
         }
 

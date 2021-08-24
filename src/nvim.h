@@ -52,19 +52,8 @@ public:
     ~Nvim();
     Nvim(const Nvim &) = delete;
     Nvim &operator=(const Nvim &) = delete;
-
-    std::vector<char> ParseConfig(struct mpack_node_t *config_node);
-    void SendUIAttach(int grid_rows, int grid_cols);
-    void SendResize(int grid_rows, int grid_cols);
-    void SendChar(wchar_t input_char);
-    void SendSysChar(wchar_t sys_char);
-    void SendInput(const char *input_chars);
-    void SendInput(int virtual_key, int flags);
-    void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
-                        int mouse_col);
-    bool ProcessKeyDown(int virtual_key);
-    void OpenFile(const wchar_t *file_name);
+    void Send(void *data, size_t size);
+    int64_t RegisterRequest(NvimRequest request);
     NvimRequest GetRequestFromID(size_t id) const;
-
     bool TryDequeue(NvimMessage *msg);
 };

@@ -1,4 +1,4 @@
-#include "nvim.h"
+#include "nvim_pipe.h"
 #include "grid.h"
 #include "hl.h"
 #include "renderer.h"
@@ -17,7 +17,7 @@ struct Context
     GridSize start_grid_size = {};
     bool start_maximized = false;
     HWND hwnd = nullptr;
-    Nvim *nvim = nullptr;
+    NvimPipe *nvim = nullptr;
     Renderer *renderer = nullptr;
     bool dead_char_pending = false;
     bool xbuttons[2] = {false, false};
@@ -1589,7 +1589,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     {
         return 1;
     }
-    Nvim nvim(cmd.nvim_command_line);
+    NvimPipe nvim(cmd.nvim_command_line);
     context.nvim = &nvim;
     context._grid.OnSizeChanged([&context](const GridSize &size)
                                 { context.SendResize(size.rows, size.cols); });

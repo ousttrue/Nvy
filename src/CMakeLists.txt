@@ -4,7 +4,7 @@ ${THIRDPARTY_DIR}/nvim/nvim_icon.rc
 
 target_sources(Nvy PUBLIC
 "main.cpp"
-"nvim.cpp"
+"nvim_pipe.cpp"
 "renderer.cpp"
 "grid.cpp"
 )

@@ -1,4 +1,4 @@
-#include "nvim.h"
+#include "nvim_pipe.h"
 #include "mpack.h"
 #include "mpack_helper.h"
 #include "window_messages.h"
@@ -240,31 +240,31 @@ public:
     }
 };
 
-Nvim::Nvim(wchar_t *command_line) : _impl(new NvimImpl(command_line))
+NvimPipe::NvimPipe(wchar_t *command_line) : _impl(new NvimImpl(command_line))
 {
 }
 
-Nvim::~Nvim()
+NvimPipe::~NvimPipe()
 {
     delete _impl;
 }
 
-void Nvim::Send(void *data, size_t size)
+void NvimPipe::Send(void *data, size_t size)
 {
     _impl->Send(data, size);
 }
 
-int64_t Nvim::RegisterRequest(NvimRequest request)
+int64_t NvimPipe::RegisterRequest(NvimRequest request)
 {
     return _impl->RegisterRequest(request);
 }
 
-NvimRequest Nvim::GetRequestFromID(size_t id) const
+NvimRequest NvimPipe::GetRequestFromID(size_t id) const
 {
     return _impl->GetRequestFromID(id);
 }
 
-bool Nvim::TryDequeue(NvimMessage *msg)
+bool NvimPipe::TryDequeue(NvimMessage *msg)
 {
     return _impl->TryDequeue(msg);
 }

@@ -43,15 +43,15 @@ constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
 using NvimMessage = std::shared_ptr<struct mpack_tree_t>;
 
-class Nvim
+class NvimPipe
 {
     class NvimImpl *_impl;
 
 public:
-    Nvim(wchar_t *command_line);
-    ~Nvim();
-    Nvim(const Nvim &) = delete;
-    Nvim &operator=(const Nvim &) = delete;
+    NvimPipe(wchar_t *command_line);
+    ~NvimPipe();
+    NvimPipe(const NvimPipe &) = delete;
+    NvimPipe &operator=(const NvimPipe &) = delete;
     void Send(void *data, size_t size);
     int64_t RegisterRequest(NvimRequest request);
     NvimRequest GetRequestFromID(size_t id) const;

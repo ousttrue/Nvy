@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include <memory>
 #include <vector>
+#include <queue>
+#include <mutex>
+#include <Windows.h>
 
 enum NvimRequest : uint8_t
 {
@@ -45,15 +48,30 @@ using NvimMessage = std::shared_ptr<struct mpack_tree_t>;
 
 class NvimPipe
 {
-    class NvimImpl *_impl;
+public:
+    HANDLE stdin_read = nullptr;
+    HANDLE stdin_write = nullptr;
+    HANDLE stdout_read = nullptr;
+    HANDLE stdout_write = nullptr;
+    PROCESS_INFORMATION process_info = {0};
+
+private:
+    int64_t next_msg_id = 0;
+    std::vector<NvimRequest> msg_id_to_method;
+
+    std::queue<NvimMessage> _queue;
+    std::mutex _mutex;
 
 public:
-    NvimPipe(wchar_t *command_line);
+    NvimPipe();
     ~NvimPipe();
     NvimPipe(const NvimPipe &) = delete;
     NvimPipe &operator=(const NvimPipe &) = delete;
+    bool Launch(const wchar_t *command_line);
+
     void Send(void *data, size_t size);
     int64_t RegisterRequest(NvimRequest request);
     NvimRequest GetRequestFromID(size_t id) const;
+    void Enqueue(const NvimMessage &msg);
     bool TryDequeue(NvimMessage *msg);
 };

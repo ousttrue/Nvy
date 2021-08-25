@@ -270,8 +270,8 @@ struct Context
         nvim->Send(data, size);
     }
 
-    void SendMouseInput(MouseButton button, MouseAction action,
-                              int mouse_row, int mouse_col)
+    void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
+                        int mouse_col)
     {
         char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
         mpack_writer_t writer;
@@ -1324,23 +1324,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             {
             case MK_LBUTTON:
             {
-                context->SendMouseInput(MouseButton::Left,
-                                              MouseAction::Drag, grid_pos.row,
-                                              grid_pos.col);
+                context->SendMouseInput(MouseButton::Left, MouseAction::Drag,
+                                        grid_pos.row, grid_pos.col);
             }
             break;
             case MK_MBUTTON:
             {
-                context->SendMouseInput(MouseButton::Middle,
-                                              MouseAction::Drag, grid_pos.row,
-                                              grid_pos.col);
+                context->SendMouseInput(MouseButton::Middle, MouseAction::Drag,
+                                        grid_pos.row, grid_pos.col);
             }
             break;
             case MK_RBUTTON:
             {
-                context->SendMouseInput(MouseButton::Right,
-                                              MouseAction::Drag, grid_pos.row,
-                                              grid_pos.col);
+                context->SendMouseInput(MouseButton::Right, MouseAction::Drag,
+                                        grid_pos.row, grid_pos.col);
             }
             break;
             }
@@ -1361,33 +1358,33 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             cursor_pos.x, cursor_pos.y, fontSize.width, fontSize.height);
         if (msg == WM_LBUTTONDOWN)
         {
-            context->SendMouseInput(MouseButton::Left, MouseAction::Press,
-                                          row, col);
+            context->SendMouseInput(MouseButton::Left, MouseAction::Press, row,
+                                    col);
         }
         else if (msg == WM_MBUTTONDOWN)
         {
-            context->SendMouseInput(MouseButton::Middle,
-                                          MouseAction::Press, row, col);
+            context->SendMouseInput(MouseButton::Middle, MouseAction::Press,
+                                    row, col);
         }
         else if (msg == WM_RBUTTONDOWN)
         {
-            context->SendMouseInput(MouseButton::Right,
-                                          MouseAction::Press, row, col);
+            context->SendMouseInput(MouseButton::Right, MouseAction::Press, row,
+                                    col);
         }
         else if (msg == WM_LBUTTONUP)
         {
-            context->SendMouseInput(MouseButton::Left,
-                                          MouseAction::Release, row, col);
+            context->SendMouseInput(MouseButton::Left, MouseAction::Release,
+                                    row, col);
         }
         else if (msg == WM_MBUTTONUP)
         {
-            context->SendMouseInput(MouseButton::Middle,
-                                          MouseAction::Release, row, col);
+            context->SendMouseInput(MouseButton::Middle, MouseAction::Release,
+                                    row, col);
         }
         else if (msg == WM_RBUTTONUP)
         {
-            context->SendMouseInput(MouseButton::Right,
-                                          MouseAction::Release, row, col);
+            context->SendMouseInput(MouseButton::Right, MouseAction::Release,
+                                    row, col);
         }
     }
         return 0;
@@ -1453,8 +1450,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         {
             for (int i = 0; i < abs(scroll_amount); ++i)
             {
-                context->SendMouseInput(MouseButton::Wheel, action, row,
-                                              col);
+                context->SendMouseInput(MouseButton::Wheel, action, row, col);
             }
         }
     }
@@ -1587,9 +1583,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                                nullptr, nullptr, instance, &context);
     if (hwnd == NULL)
     {
-        return 1;
+        return 2;
     }
-    NvimPipe nvim(cmd.nvim_command_line);
+    NvimPipe nvim;
+    if (!nvim.Launch(cmd.nvim_command_line))
+    {
+        return 3;
+    }
     context.nvim = &nvim;
     context._grid.OnSizeChanged([&context](const GridSize &size)
                                 { context.SendResize(size.rows, size.cols); });

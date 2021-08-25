@@ -157,7 +157,7 @@ bool NvimPipe::Launch(const wchar_t *command_line)
     return true;
 }
 
-void NvimPipe::Send(void *data, size_t size)
+void NvimPipe::Send(const void *data, size_t size)
 {
     auto u = msgpackpp::parser((const uint8_t *)data, size);
     PLOG_DEBUG << u.to_json();

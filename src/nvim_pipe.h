@@ -69,7 +69,11 @@ public:
     NvimPipe &operator=(const NvimPipe &) = delete;
     bool Launch(const wchar_t *command_line);
 
-    void Send(void *data, size_t size);
+    void Send(const void *data, size_t size);
+    void Send(const std::vector<uint8_t> &msg)
+    {
+        Send(msg.data(), msg.size());
+    }
     int64_t RegisterRequest(NvimRequest request);
     NvimRequest GetRequestFromID(size_t id) const;
     void Enqueue(const NvimMessage &msg);

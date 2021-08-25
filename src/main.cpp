@@ -1592,36 +1592,24 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
 
     // Query api info
-    char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-    MPackStartRequest(nvim.RegisterRequest(vim_get_api_info),
-                      NVIM_REQUEST_NAMES[vim_get_api_info], &writer);
-    mpack_start_array(&writer, 0);
-    mpack_finish_array(&writer);
-    size_t size = MPackFinishMessage(&writer);
-    nvim.Send(data, size);
+    {
+        auto msg = msgpackpp::make_rpc_request(
+            nvim.RegisterRequest(vim_get_api_info), "nvim_get_api_info");
+        nvim.Send(msg);
+    }
 
     // Set g:nvy global variable
-    mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-    MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_set_var],
-                           &writer);
-    mpack_start_array(&writer, 2);
-    mpack_write_cstr(&writer, "nvy");
-    mpack_write_int(&writer, 1);
-    mpack_finish_array(&writer);
-    size = MPackFinishMessage(&writer);
-    nvim.Send(data, size);
+    {
+        auto msg = msgpackpp::make_rpc_notify("nvim_set_var", "nvy", 1);
+        nvim.Send(msg);
+    }
 
     // Query stdpath to find the users init.vim
-    mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-    MPackStartRequest(nvim.RegisterRequest(nvim_eval),
-                      NVIM_REQUEST_NAMES[nvim_eval], &writer);
-    mpack_start_array(&writer, 1);
-    mpack_write_cstr(&writer, "stdpath('config')");
-    mpack_finish_array(&writer);
-    size = MPackFinishMessage(&writer);
-    nvim.Send(data, size);
+    {
+        auto msg = msgpackpp::make_rpc_request(
+            nvim.RegisterRequest(nvim_eval), "nvim_eval", "stdpath('config')");
+        nvim.Send(msg);
+    }
 
     context.nvim = &nvim;
     context._grid.OnSizeChanged([&context](const GridSize &size)

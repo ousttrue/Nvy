@@ -44,7 +44,7 @@ enum class MouseAction
 };
 constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
-using NvimMessage = std::shared_ptr<struct mpack_tree_t>;
+using NvimMessage = std::vector<uint8_t>;
 
 class NvimPipe
 {

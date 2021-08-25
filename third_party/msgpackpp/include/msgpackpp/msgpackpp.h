@@ -2141,7 +2141,8 @@ public:
       current = current.next();
     }
 
-    throw std::runtime_error("key not found");
+    // not found
+    return {};
   }
 
   parse_result<parser> next() const noexcept {

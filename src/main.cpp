@@ -64,19 +64,17 @@ struct Context
         }
     }
 
-    std::vector<char> ParseConfig(mpack_node_t *config_node)
+    std::vector<char> ParseConfig(const msgpackpp::parser &config_node)
     {
-        std::vector<char> guifont_out;
-        char path[MAX_PATH];
-        const char *config_path = mpack_node_str(*config_node);
-        size_t config_path_strlen = mpack_node_strlen(*config_node);
-        strncpy_s(path, MAX_PATH, config_path, config_path_strlen);
-        strcat_s(path, MAX_PATH - config_path_strlen - 1, "\\init.vim");
+        auto p = config_node.get_string();
+        std::string path(p.begin(), p.end());
+        path += "\\init.vim";
 
         HANDLE config_file =
-            CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+            CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
+        std::vector<char> guifont_out;
         if (config_file == INVALID_HANDLE_VALUE)
         {
             return guifont_out;
@@ -589,118 +587,173 @@ struct Context
         nvim->Send(msg);
     }
 
-    void ProcessMPackMessage(mpack_tree_t *tree)
+    std::vector<uint8_t> m_buffer;
+
+    void ProcessMPackMessage(const std::vector<uint8_t> &msg)
     {
-        MPackMessageResult result = MPackExtractMessageResult(tree);
+        std::copy(msg.begin(), msg.end(), std::back_inserter(m_buffer));
 
-        if (result.type == MPackMessageType::Response)
+        auto current = msgpackpp::parser(m_buffer);
+        while (true)
         {
-            auto method = nvim->GetRequestFromID(result.response.msg_id);
-            switch (method)
+            // parse stream message
+            auto next = current.next();
+            if (next.is_ok())
             {
-            case NvimRequest::vim_get_api_info:
-            {
-                mpack_node_t top_level_map =
-                    mpack_node_array_at(result.params, 1);
-                mpack_node_t version_map =
-                    mpack_node_map_value_at(top_level_map, 0);
-                int64_t api_level =
-                    mpack_node_map_cstr(version_map, "api_level").data->value.i;
-                assert(api_level > 6);
+                ProcessMPackMessage(current);
+                current = next.value;
             }
-            break;
-            case NvimRequest::nvim_eval:
+            else
             {
-                auto guifont_buffer = ParseConfig(&result.params);
-                if (!guifont_buffer.empty())
+                if (next.status == msgpackpp::parse_status::empty ||
+                    next.status == msgpackpp::parse_status::lack)
                 {
-                    renderer->UpdateGuiFont(guifont_buffer.data(),
-                                            strlen(guifont_buffer.data()));
+                    break;
                 }
 
-                if (start_grid_size.rows != 0 && start_grid_size.cols != 0)
-                {
-                    PixelSize start_size = renderer->GridToPixelSize(
-                        start_grid_size.rows, start_grid_size.cols);
-                    RECT client_rect;
-                    GetClientRect(hwnd, &client_rect);
-                    MoveWindow(hwnd, client_rect.left, client_rect.top,
-                               start_size.width, start_size.height, false);
-                }
-
-                // Attach the renderer now that the window size is
-                // determined
-                renderer->Attach();
-                auto size = renderer->Size();
-                auto fontSize = renderer->FontSize();
-                auto grid = GridSize::FromWindowSize(
-                    size.width, size.height, fontSize.width, fontSize.height);
-                SendUIAttach(grid.rows, grid.cols);
-
-                if (start_maximized)
-                {
-                    ToggleFullscreen();
-                }
-                ShowWindow(hwnd, SW_SHOWDEFAULT);
-            }
-            break;
-            case NvimRequest::nvim_input:
-            case NvimRequest::nvim_input_mouse:
-            case NvimRequest::nvim_command:
-            {
-            }
-            break;
+                // critical error. cannot continue
+                throw std::runtime_error("critical");
             }
         }
-        else if (result.type == MPackMessageType::Notification)
+        auto d = current.data() - m_buffer.data();
+        if (d)
         {
-            if (MPackMatchString(result.notification.name, "redraw"))
-            {
-                Redraw(result.params);
-            }
+            // consume used data
+            m_buffer.erase(m_buffer.begin(), m_buffer.begin() + d);
         }
     }
 
-    void Redraw(mpack_node_t params)
+    void ProcessMPackMessage(const msgpackpp::parser &msg)
+    {
+        switch (msg[0].get_number<int>())
+        {
+        case 0:
+            // request [0, msgid, method, params]
+            PLOG_DEBUG << "[request#" << msg[1].get_number<int>() << ", "
+                       << msg[2].get_string() << "]";
+            break;
+        case 1:
+            // response [1, msgid, error, result]
+            PLOG_DEBUG << "[response#" << msg[1].get_number<int>() << "]";
+            {
+                auto method =
+                    nvim->GetRequestFromID(msg[1].get_number<size_t>());
+                switch (method)
+                {
+                case NvimRequest::vim_get_api_info:
+                {
+                    // TODO:
+                    PLOGD << msg;
+                    // mpack_node_t top_level_map =
+                    //     mpack_node_array_at(result.params, 1);
+                    // mpack_node_t version_map =
+                    //     mpack_node_map_value_at(top_level_map, 0);
+                    // int64_t api_level =
+                    //     mpack_node_map_cstr(version_map, "api_level")
+                    //         .data->value.i;
+                    // assert(api_level > 6);
+                    break;
+                }
+                case NvimRequest::nvim_eval:
+                {
+                    auto guifont_buffer = ParseConfig(msg[3]);
+                    if (!guifont_buffer.empty())
+                    {
+                        renderer->UpdateGuiFont(guifont_buffer.data(),
+                                                strlen(guifont_buffer.data()));
+                    }
+
+                    if (start_grid_size.rows != 0 && start_grid_size.cols != 0)
+                    {
+                        PixelSize start_size = renderer->GridToPixelSize(
+                            start_grid_size.rows, start_grid_size.cols);
+                        RECT client_rect;
+                        GetClientRect(hwnd, &client_rect);
+                        MoveWindow(hwnd, client_rect.left, client_rect.top,
+                                   start_size.width, start_size.height, false);
+                    }
+
+                    // Attach the renderer now that the window size is
+                    // determined
+                    renderer->Attach();
+                    auto size = renderer->Size();
+                    auto fontSize = renderer->FontSize();
+                    auto grid = GridSize::FromWindowSize(
+                        size.width, size.height, fontSize.width,
+                        fontSize.height);
+                    SendUIAttach(grid.rows, grid.cols);
+
+                    if (start_maximized)
+                    {
+                        ToggleFullscreen();
+                    }
+                    ShowWindow(hwnd, SW_SHOWDEFAULT);
+                }
+                break;
+                case NvimRequest::nvim_input:
+                case NvimRequest::nvim_input_mouse:
+                case NvimRequest::nvim_command:
+                {
+                }
+                break;
+                }
+            }
+
+            break;
+        case 2:
+            // notify [2, method, params]
+            PLOG_DEBUG << "[notify, " << msg[1].get_string() << "]";
+            {
+                if (msg[1].get_string() == "redraw")
+                {
+                    Redraw(msg[2]);
+                }
+            }
+            break;
+        default:
+            assert(false);
+            break;
+        }
+    }
+
+    void Redraw(const msgpackpp::parser &params)
     {
         renderer->InitializeWindowDependentResources();
         renderer->StartDraw();
 
-        uint64_t redraw_commands_length = mpack_node_array_length(params);
-        for (uint64_t i = 0; i < redraw_commands_length; ++i)
+        auto redraw_commands_length = params.count();
+        auto redraw_command_arr = params.first_array_item().value;
+        for (uint64_t i = 0; i < redraw_commands_length;
+             ++i, redraw_command_arr = redraw_command_arr.next())
         {
-            mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
-            mpack_node_t redraw_command_name =
-                mpack_node_array_at(redraw_command_arr, 0);
-
-            if (MPackMatchString(redraw_command_name, "option_set"))
+            auto redraw_command_name = redraw_command_arr[0].get_string();
+            if (redraw_command_name == "option_set")
             {
                 SetGuiOptions(redraw_command_arr);
             }
-            if (MPackMatchString(redraw_command_name, "grid_resize"))
+            if (redraw_command_name == "grid_resize")
             {
                 UpdateGridSize(redraw_command_arr);
             }
-            if (MPackMatchString(redraw_command_name, "grid_clear"))
+            if (redraw_command_name == "grid_clear")
             {
                 _grid.Clear();
                 renderer->DrawBackgroundRect(_grid.Rows(), _grid.Cols(),
                                              &_grid.hl(0));
             }
-            else if (MPackMatchString(redraw_command_name,
-                                      "default_colors_set"))
+            else if (redraw_command_name == "default_colors_set")
             {
                 UpdateDefaultColors(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "hl_attr_define"))
+            else if (redraw_command_name == "hl_attr_define")
             {
                 UpdateHighlightAttributes(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "grid_line"))
+            else if (redraw_command_name == "grid_line")
             {
                 DrawGridLines(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "grid_cursor_goto"))
+            else if (redraw_command_name == "grid_cursor_goto")
             {
                 // If the old cursor position is still within the row bounds,
                 // redraw the line to get rid of the cursor
@@ -710,11 +763,11 @@ struct Context
                 }
                 UpdateCursorPos(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "mode_info_set"))
+            else if (redraw_command_name == "mode_info_set")
             {
                 UpdateCursorModeInfos(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "mode_change"))
+            else if (redraw_command_name == "mode_change")
             {
                 // Redraw cursor if its inside the bounds
                 if (_grid.CursorRow() < _grid.Rows())
@@ -723,7 +776,7 @@ struct Context
                 }
                 UpdateCursorMode(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "busy_start"))
+            else if (redraw_command_name == "busy_start")
             {
                 this->_ui_busy = true;
                 // Hide cursor while UI is busy
@@ -732,15 +785,15 @@ struct Context
                     renderer->DrawGridLine(&_grid, _grid.CursorRow());
                 }
             }
-            else if (MPackMatchString(redraw_command_name, "busy_stop"))
+            else if (redraw_command_name == "busy_stop")
             {
                 this->_ui_busy = false;
             }
-            else if (MPackMatchString(redraw_command_name, "grid_scroll"))
+            else if (redraw_command_name == "grid_scroll")
             {
                 ScrollRegion(redraw_command_arr);
             }
-            else if (MPackMatchString(redraw_command_name, "flush"))
+            else if (redraw_command_name == "flush")
             {
                 if (!this->_ui_busy)
                 {
@@ -749,143 +802,135 @@ struct Context
                 renderer->DrawBorderRectangles(&_grid);
                 renderer->FinishDraw();
             }
+            else
+            {
+                PLOGD << "unknown:" << redraw_command_name;
+            }
         }
     }
 
-    void SetGuiOptions(mpack_node_t option_set)
+    void SetGuiOptions(const msgpackpp::parser &option_set)
     {
-        uint64_t option_set_length = mpack_node_array_length(option_set);
+        uint64_t option_set_length = option_set.count();
 
-        for (uint64_t i = 1; i < option_set_length; ++i)
+        auto item = option_set.first_array_item().value.next().value;
+        for (uint64_t i = 1; i < option_set_length; ++i, item = item.next())
         {
-            mpack_node_t name =
-                mpack_node_array_at(mpack_node_array_at(option_set, i), 0);
-            mpack_node_t value =
-                mpack_node_array_at(mpack_node_array_at(option_set, i), 1);
-            if (MPackMatchString(name, "guifont"))
+            auto name = item[0].get_string();
+            if (name == "guifont")
             {
-                const char *font_str = mpack_node_str(value);
-                size_t strlen = mpack_node_strlen(value);
-                renderer->UpdateGuiFont(font_str, strlen);
+                auto font_str = item[1].get_string();
+                // size_t strlen = mpack_node_strlen(value);
+                renderer->UpdateGuiFont(font_str.data(), font_str.size());
 
-                // Send message to window in order to update nvim row/col count
+                // Send message to window in order to update nvim row/col
                 PostMessage(hwnd, WM_RENDERER_FONT_UPDATE, 0, 0);
             }
         }
     }
 
-    void UpdateGridSize(mpack_node_t grid_resize)
+    // ["grid_resize",[1,190,45]]
+    void UpdateGridSize(const msgpackpp::parser &grid_resize)
     {
-        mpack_node_t grid_resize_params = mpack_node_array_at(grid_resize, 1);
-        int grid_cols = MPackIntFromArray(grid_resize_params, 1);
-        int grid_rows = MPackIntFromArray(grid_resize_params, 2);
-
+        auto grid_resize_params = grid_resize[1];
+        int grid_cols = grid_resize_params[1].get_number<int>();
+        int grid_rows = grid_resize_params[2].get_number<int>();
         _grid.Resize({grid_rows, grid_cols});
     }
 
-    void UpdateCursorPos(mpack_node_t cursor_goto)
+    // ["grid_cursor_goto",[1,0,4]]
+    void UpdateCursorPos(const msgpackpp::parser &cursor_goto)
     {
-        mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
-        auto row = MPackIntFromArray(cursor_goto_params, 1);
-        auto col = MPackIntFromArray(cursor_goto_params, 2);
+        auto cursor_goto_params = cursor_goto[1];
+        auto row = cursor_goto_params[1].get_number<int>();
+        auto col = cursor_goto_params[2].get_number<int>();
         _grid.SetCursor(row, col);
     }
 
-    void UpdateCursorModeInfos(mpack_node_t mode_info_set_params)
+    // ["mode_info_set",[true,[{"mouse_shape":0...
+    void UpdateCursorModeInfos(const msgpackpp::parser &mode_info_set_params)
     {
-        mpack_node_t mode_info_params =
-            mpack_node_array_at(mode_info_set_params, 1);
-        mpack_node_t mode_infos = mpack_node_array_at(mode_info_params, 1);
-        size_t mode_infos_length = mpack_node_array_length(mode_infos);
+        auto mode_info_params = mode_info_set_params[1];
+        auto mode_infos = mode_info_params[1];
+        size_t mode_infos_length = mode_infos.count();
         assert(mode_infos_length <= MAX_CURSOR_MODE_INFOS);
 
         for (size_t i = 0; i < mode_infos_length; ++i)
         {
-            mpack_node_t mode_info_map = mpack_node_array_at(mode_infos, i);
-
+            auto mode_info_map = mode_infos[i];
             _grid.SetCursorShape(i, CursorShape::None);
-            mpack_node_t cursor_shape =
-                mpack_node_map_cstr_optional(mode_info_map, "cursor_shape");
-            if (!mpack_node_is_missing(cursor_shape))
+
+            auto cursor_shape = mode_info_map["cursor_shape"];
+            if (cursor_shape.is_string())
             {
-                const char *cursor_shape_str = mpack_node_str(cursor_shape);
-                size_t strlen = mpack_node_strlen(cursor_shape);
-                if (!strncmp(cursor_shape_str, "block", strlen))
+                auto cursor_shape_str = cursor_shape.get_string();
+                if (cursor_shape_str == "block")
                 {
                     _grid.SetCursorShape(i, CursorShape::Block);
                 }
-                else if (!strncmp(cursor_shape_str, "vertical", strlen))
+                else if (cursor_shape_str == "vertical")
                 {
                     _grid.SetCursorShape(i, CursorShape::Vertical);
                 }
-                else if (!strncmp(cursor_shape_str, "horizontal", strlen))
+                else if (cursor_shape_str == "horizontal")
                 {
                     _grid.SetCursorShape(i, CursorShape::Horizontal);
                 }
             }
 
             _grid.SetCursorModeHighlightAttribute(i, 0);
-            mpack_node_t hl_attrib_index =
-                mpack_node_map_cstr_optional(mode_info_map, "attr_id");
-            if (!mpack_node_is_missing(hl_attrib_index))
+            auto hl_attrib_index = mode_info_map["attr_id"];
+            if (hl_attrib_index.is_number())
             {
                 _grid.SetCursorModeHighlightAttribute(
-                    i, static_cast<int>(hl_attrib_index.data->value.i));
+                    i, hl_attrib_index.get_number<int>());
             }
         }
     }
 
-    void UpdateCursorMode(mpack_node_t mode_change)
+    // ["mode_change",["normal",0]]
+    void UpdateCursorMode(const msgpackpp::parser &mode_change)
     {
-        mpack_node_t mode_change_params = mpack_node_array_at(mode_change, 1);
-        _grid.SetCursorModeInfo(
-            mpack_node_array_at(mode_change_params, 1).data->value.u);
+        auto mode_change_params = mode_change[1];
+        _grid.SetCursorModeInfo(mode_change_params[1].get_number<int>());
     }
 
-    void UpdateDefaultColors(mpack_node_t default_colors)
+    // ["default_colors_set",[1.67772e+07,0,1.67117e+07,0,0]]
+    void UpdateDefaultColors(const msgpackpp::parser &default_colors)
     {
-        size_t default_colors_arr_length =
-            mpack_node_array_length(default_colors);
-
+        size_t default_colors_arr_length = default_colors.count();
         for (size_t i = 1; i < default_colors_arr_length; ++i)
         {
-            mpack_node_t color_arr = mpack_node_array_at(default_colors, i);
+            auto color_arr = default_colors[i];
 
             // Default colors occupy the first index of the highlight attribs
             // array
             auto &defaultHL = _grid.hl(0);
 
-            defaultHL.foreground = static_cast<uint32_t>(
-                mpack_node_array_at(color_arr, 0).data->value.u);
-            defaultHL.background = static_cast<uint32_t>(
-                mpack_node_array_at(color_arr, 1).data->value.u);
-            defaultHL.special = static_cast<uint32_t>(
-                mpack_node_array_at(color_arr, 2).data->value.u);
+            defaultHL.foreground = color_arr[0].get_number<uint32_t>();
+            defaultHL.background = color_arr[1].get_number<uint32_t>();
+            defaultHL.special = color_arr[2].get_number<uint32_t>();
             defaultHL.flags = 0;
         }
     }
 
-    void UpdateHighlightAttributes(mpack_node_t highlight_attribs)
+    // ["hl_attr_define",[1,{},{},[]],[2,{"foreground":1.38823e+07,"background":1.1119e+07},{"for
+    void UpdateHighlightAttributes(const msgpackpp::parser &highlight_attribs)
     {
-        uint64_t attrib_count = mpack_node_array_length(highlight_attribs);
+        uint64_t attrib_count = highlight_attribs.count();
         for (uint64_t i = 1; i < attrib_count; ++i)
         {
-            int64_t attrib_index =
-                mpack_node_array_at(mpack_node_array_at(highlight_attribs, i),
-                                    0)
-                    .data->value.i;
+            int64_t attrib_index = highlight_attribs[i][0].get_number<int>();
             assert(attrib_index <= MAX_HIGHLIGHT_ATTRIBS);
 
-            mpack_node_t attrib_map = mpack_node_array_at(
-                mpack_node_array_at(highlight_attribs, i), 1);
+            auto attrib_map = highlight_attribs[i][1];
 
             const auto SetColor = [&](const char *name, uint32_t *color)
             {
-                mpack_node_t color_node =
-                    mpack_node_map_cstr_optional(attrib_map, name);
-                if (!mpack_node_is_missing(color_node))
+                auto color_node = attrib_map[name];
+                if (color_node.is_number())
                 {
-                    *color = static_cast<uint32_t>(color_node.data->value.u);
+                    *color = color_node.get_number<uint32_t>();
                 }
                 else
                 {
@@ -899,11 +944,10 @@ struct Context
             const auto SetFlag =
                 [&](const char *flag_name, HighlightAttributeFlags flag)
             {
-                mpack_node_t flag_node =
-                    mpack_node_map_cstr_optional(attrib_map, flag_name);
-                if (!mpack_node_is_missing(flag_node))
+                auto flag_node = attrib_map[flag_name];
+                if (flag_node.is_bool())
                 {
-                    if (flag_node.data->value.b)
+                    if (flag_node.get_bool())
                     {
                         _grid.hl(attrib_index).flags |= flag;
                     }
@@ -922,117 +966,111 @@ struct Context
         }
     }
 
-    void DrawGridLines(mpack_node_t grid_lines)
+    void DrawGridLines(const msgpackpp::parser &grid_lines)
     {
-        int grid_size = _grid.Count();
-        size_t line_count = mpack_node_array_length(grid_lines);
-        for (size_t i = 1; i < line_count; ++i)
-        {
-            mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
+        // int grid_size = _grid.Count();
+        // size_t line_count = mpack_node_array_length(grid_lines);
+        // for (size_t i = 1; i < line_count; ++i)
+        // {
+        //     mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
 
-            int row = MPackIntFromArray(grid_line, 1);
-            int col_start = MPackIntFromArray(grid_line, 2);
+        //     int row = MPackIntFromArray(grid_line, 1);
+        //     int col_start = MPackIntFromArray(grid_line, 2);
 
-            mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
-            size_t cells_array_length = mpack_node_array_length(cells_array);
+        //     mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
+        //     size_t cells_array_length = mpack_node_array_length(cells_array);
 
-            int col_offset = col_start;
-            int hl_attrib_id = 0;
-            for (size_t j = 0; j < cells_array_length; ++j)
-            {
+        //     int col_offset = col_start;
+        //     int hl_attrib_id = 0;
+        //     for (size_t j = 0; j < cells_array_length; ++j)
+        //     {
 
-                mpack_node_t cells = mpack_node_array_at(cells_array, j);
-                size_t cells_length = mpack_node_array_length(cells);
+        //         mpack_node_t cells = mpack_node_array_at(cells_array, j);
+        //         size_t cells_length = mpack_node_array_length(cells);
 
-                mpack_node_t text = mpack_node_array_at(cells, 0);
-                const char *str = mpack_node_str(text);
+        //         mpack_node_t text = mpack_node_array_at(cells, 0);
+        //         const char *str = mpack_node_str(text);
 
-                int strlen = static_cast<int>(mpack_node_strlen(text));
+        //         int strlen = static_cast<int>(mpack_node_strlen(text));
 
-                if (cells_length > 1)
-                {
-                    hl_attrib_id = MPackIntFromArray(cells, 1);
-                }
+        //         if (cells_length > 1)
+        //         {
+        //             hl_attrib_id = MPackIntFromArray(cells, 1);
+        //         }
 
-                // Right part of double-width char is the empty string, thus
-                // if the next cell array contains the empty string, we can
-                // process the current string as a double-width char and proceed
-                if (j < (cells_array_length - 1) &&
-                    mpack_node_strlen(mpack_node_array_at(
-                        mpack_node_array_at(cells_array, j + 1), 0)) == 0)
-                {
+        //         // Right part of double-width char is the empty string, thus
+        //         // if the next cell array contains the empty string, we can
+        //         // process the current string as a double-width char and
+        //         proceed if (j < (cells_array_length - 1) &&
+        //             mpack_node_strlen(mpack_node_array_at(
+        //                 mpack_node_array_at(cells_array, j + 1), 0)) == 0)
+        //         {
 
-                    int offset = row * _grid.Cols() + col_offset;
-                    _grid.Props()[offset].is_wide_char = true;
-                    _grid.Props()[offset].hl_attrib_id = hl_attrib_id;
-                    _grid.Props()[offset + 1].hl_attrib_id = hl_attrib_id;
+        //             int offset = row * _grid.Cols() + col_offset;
+        //             _grid.Props()[offset].is_wide_char = true;
+        //             _grid.Props()[offset].hl_attrib_id = hl_attrib_id;
+        //             _grid.Props()[offset + 1].hl_attrib_id = hl_attrib_id;
 
-                    int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
-                                                      &_grid.Chars()[offset],
-                                                      grid_size - offset);
-                    assert(wstrlen == 1 || wstrlen == 2);
+        //             int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str,
+        //             strlen,
+        //                                               &_grid.Chars()[offset],
+        //                                               grid_size - offset);
+        //             assert(wstrlen == 1 || wstrlen == 2);
 
-                    if (wstrlen == 1)
-                    {
-                        _grid.Chars()[offset + 1] = L'\0';
-                    }
+        //             if (wstrlen == 1)
+        //             {
+        //                 _grid.Chars()[offset + 1] = L'\0';
+        //             }
 
-                    col_offset += 2;
-                    continue;
-                }
+        //             col_offset += 2;
+        //             continue;
+        //         }
 
-                if (strlen == 0)
-                {
-                    continue;
-                }
+        //         if (strlen == 0)
+        //         {
+        //             continue;
+        //         }
 
-                int repeat = 1;
-                if (cells_length > 2)
-                {
-                    repeat = MPackIntFromArray(cells, 2);
-                }
+        //         int repeat = 1;
+        //         if (cells_length > 2)
+        //         {
+        //             repeat = MPackIntFromArray(cells, 2);
+        //         }
 
-                int offset = row * _grid.Cols() + col_offset;
-                int wstrlen = 0;
-                for (int k = 0; k < repeat; ++k)
-                {
-                    int idx = offset + (k * wstrlen);
-                    wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
-                                                  &_grid.Chars()[idx],
-                                                  grid_size - idx);
-                }
+        //         int offset = row * _grid.Cols() + col_offset;
+        //         int wstrlen = 0;
+        //         for (int k = 0; k < repeat; ++k)
+        //         {
+        //             int idx = offset + (k * wstrlen);
+        //             wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
+        //                                           &_grid.Chars()[idx],
+        //                                           grid_size - idx);
+        //         }
 
-                int wstrlen_with_repetitions = wstrlen * repeat;
-                for (int k = 0; k < wstrlen_with_repetitions; ++k)
-                {
-                    _grid.Props()[offset + k].hl_attrib_id = hl_attrib_id;
-                    _grid.Props()[offset + k].is_wide_char = false;
-                }
+        //         int wstrlen_with_repetitions = wstrlen * repeat;
+        //         for (int k = 0; k < wstrlen_with_repetitions; ++k)
+        //         {
+        //             _grid.Props()[offset + k].hl_attrib_id = hl_attrib_id;
+        //             _grid.Props()[offset + k].is_wide_char = false;
+        //         }
 
-                col_offset += wstrlen_with_repetitions;
-            }
+        //         col_offset += wstrlen_with_repetitions;
+        //     }
 
-            renderer->DrawGridLine(&_grid, row);
-        }
+        //     renderer->DrawGridLine(&_grid, row);
+        // }
     }
 
-    void ScrollRegion(mpack_node_t scroll_region)
+    void ScrollRegion(const msgpackpp::parser &scroll_region)
     {
-        mpack_node_t scroll_region_params =
-            mpack_node_array_at(scroll_region, 1);
-
-        int64_t top =
-            mpack_node_array_at(scroll_region_params, 1).data->value.i;
-        int64_t bottom =
-            mpack_node_array_at(scroll_region_params, 2).data->value.i;
-        int64_t left =
-            mpack_node_array_at(scroll_region_params, 3).data->value.i;
-        int64_t right =
-            mpack_node_array_at(scroll_region_params, 4).data->value.i;
-        int64_t rows =
-            mpack_node_array_at(scroll_region_params, 5).data->value.i;
-        int64_t cols =
-            mpack_node_array_at(scroll_region_params, 6).data->value.i;
+        PLOGD << scroll_region;
+        auto scroll_region_params = scroll_region[1];
+        int64_t top = scroll_region_params[1].get_number<int>();
+        int64_t bottom = scroll_region_params[2].get_number<int>();
+        int64_t left = scroll_region_params[3].get_number<int>();
+        int64_t right = scroll_region_params[4].get_number<int>();
+        int64_t rows = scroll_region_params[5].get_number<int>();
+        int64_t cols = scroll_region_params[6].get_number<int>();
 
         // Currently nvim does not support horizontal scrolling,
         // the parameter is reserved for later use
@@ -1062,8 +1100,8 @@ struct Context
             // scroll_rects or bitmap copies. The former seems insufficient for
             // nvim since it can require multiple scrolls per frame, the latter
             // I can't seem to make work with the FLIP_SEQUENTIAL swapchain
-            // model. Thus we fall back to drawing the appropriate scrolled grid
-            // lines
+            // model. Thus we fall back to drawing the appropriate scrolled
+            // grid lines
             renderer->DrawGridLine(&_grid, target_row);
         }
 
@@ -1584,13 +1622,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
         NvimMessage nvimMessage;
         while (nvim.TryDequeue(&nvimMessage))
         {
-            if (!nvimMessage)
+            if (nvimMessage.empty())
             {
                 // nvim exited
                 PostMessage(hwnd, WM_DESTROY, 0, 0);
                 break;
             }
-            context.ProcessMPackMessage(nvimMessage.get());
+            context.ProcessMPackMessage(nvimMessage);
         }
 
         auto now = timeGetTime();

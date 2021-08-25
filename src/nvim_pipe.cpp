@@ -6,71 +6,29 @@
 #include <msgpackpp/msgpackpp.h>
 #include <stdint.h>
 
-constexpr int Megabytes(int n)
-{
-    return 1024 * 1024 * n;
-}
-
-static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count)
-{
-    HANDLE nvim_stdout_read = mpack_tree_context(tree);
-    DWORD bytes_read;
-    BOOL success = ReadFile(nvim_stdout_read, buffer, static_cast<DWORD>(count),
-                            &bytes_read, nullptr);
-    if (!success)
-    {
-        mpack_tree_flag_error(tree, mpack_error_io);
-    }
-    return bytes_read;
-}
-
 static DWORD WINAPI NvimMessageHandler(LPVOID param)
 {
-    auto nvim = static_cast<NvimPipe *>(param);
+    auto nvim = (NvimPipe *)param;
+
+    std::vector<uint8_t> buffer(1024 * 1024);
     while (true)
     {
-        auto tree = NvimMessage(
-            static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t))),
-            [](mpack_tree_t *p)
-            {
-                mpack_tree_destroy(p);
-                free(p);
-            });
-        mpack_tree_init_stream(tree.get(), ReadFromNvim, nvim->_stdout_read,
-                               Megabytes(20), 1024 * 1024);
-
-        mpack_tree_parse(tree.get());
-        if (mpack_tree_error(tree.get()) != mpack_ok)
+        DWORD bytes_read;
+        BOOL success =
+            ReadFile(nvim->_stdout_read, buffer.data(),
+                     static_cast<DWORD>(buffer.size()), &bytes_read, nullptr);
+        if (!success)
         {
             break;
         }
 
-        auto u =
-            msgpackpp::parser((const uint8_t *)tree->data, tree->data_length);
-        switch (u[0].get_number<int>())
+        if (bytes_read)
         {
-        case 0:
-            // request [0, msgid, method, params]
-            PLOG_DEBUG << "[request#" << u[1].get_number<int>() << ", "
-                       << u[2].get_string() << "]";
-            break;
-        case 1:
-            // response [1, msgid, error, result]
-            PLOG_DEBUG << "[response#" << u[1].get_number<int>() << "]";
-            break;
-        case 2:
-            // notify [2, method, params]
-            PLOG_DEBUG << "[notify, " << u[1].get_string() << "]";
-            break;
-        default:
-            assert(false);
-            break;
+            nvim->Enqueue({buffer.data(), buffer.data() + bytes_read});
         }
-
-        nvim->Enqueue(tree);
     }
 
-    nvim->Enqueue(nullptr);
+    nvim->Enqueue({});
     return 0;
 }
 
@@ -90,7 +48,7 @@ static DWORD WINAPI NvimProcessMonitor(LPVOID param)
             break;
         }
     }
-    nvim->Enqueue(nullptr);
+    nvim->Enqueue({});
     return 0;
 }
 

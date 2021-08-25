@@ -49,15 +49,15 @@ using NvimMessage = std::shared_ptr<struct mpack_tree_t>;
 class NvimPipe
 {
 public:
-    HANDLE stdin_read = nullptr;
-    HANDLE stdin_write = nullptr;
-    HANDLE stdout_read = nullptr;
-    HANDLE stdout_write = nullptr;
-    PROCESS_INFORMATION process_info = {0};
+    HANDLE _stdin_read = nullptr;
+    HANDLE _stdin_write = nullptr;
+    HANDLE _stdout_read = nullptr;
+    HANDLE _stdout_write = nullptr;
+    PROCESS_INFORMATION _process_info = {0};
 
 private:
-    int64_t next_msg_id = 0;
-    std::vector<NvimRequest> msg_id_to_method;
+    int64_t _next_msg_id = 0;
+    std::vector<NvimRequest> _msg_id_to_method;
 
     std::queue<NvimMessage> _queue;
     std::mutex _mutex;

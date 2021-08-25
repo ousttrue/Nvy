@@ -149,41 +149,23 @@ struct Context
 
     void SendUIAttach(int grid_rows, int grid_cols)
     {
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-
         // Send UI attach notification
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-        MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_attach],
-                               &writer);
-        mpack_start_array(&writer, 3);
-        mpack_write_int(&writer, grid_cols);
-        mpack_write_int(&writer, grid_rows);
-        mpack_start_map(&writer, 1);
-        mpack_write_cstr(&writer, "ext_linegrid");
-        mpack_write_true(&writer);
-        mpack_finish_map(&writer);
-        mpack_finish_array(&writer);
-        size_t size = MPackFinishMessage(&writer);
-
-        nvim->Send(data, size);
+        msgpackpp::packer args;
+        args.pack_array(3);
+        args << 190;
+        args << 45;
+        args.pack_map(1);
+        args << "ext_linegrid" << true;
+        auto msg = msgpackpp::make_rpc_notify_packed("nvim_ui_attach",
+                                                     args.get_payload());
+        nvim->Send(msg);
     }
 
     void SendResize(int grid_rows, int grid_cols)
     {
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-
-        MPackStartNotification(
-            NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_try_resize], &writer);
-        mpack_start_array(&writer, 2);
-        mpack_write_int(&writer, grid_cols);
-        mpack_write_int(&writer, grid_rows);
-        mpack_finish_array(&writer);
-        size_t size = MPackFinishMessage(&writer);
-
-        nvim->Send(data, size);
+        auto msg = msgpackpp::make_rpc_notify("nvim_ui_try_resize", grid_cols,
+                                              grid_rows);
+        nvim->Send(msg);
     }
 
     void SendChar(wchar_t input_char)
@@ -204,17 +186,9 @@ struct Context
         WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL,
                             NULL);
 
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-        MPackStartRequest(nvim->RegisterRequest(nvim_input),
-                          NVIM_REQUEST_NAMES[nvim_input], &writer);
-        mpack_start_array(&writer, 1);
-        mpack_write_cstr(&writer, utf8_encoded);
-        mpack_finish_array(&writer);
-        size_t size = MPackFinishMessage(&writer);
-
-        nvim->Send(data, size);
+        auto msg = msgpackpp::make_rpc_notify("nvim_input",
+                                              (const char *)utf8_encoded);
+        nvim->Send(msg);
     }
 
     void SendSysChar(wchar_t input_char)
@@ -243,105 +217,62 @@ struct Context
                  ctrl_down ? "C-" : "", shift_down ? "S-" : "",
                  alt_down ? "M-" : "", input);
 
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-        MPackStartRequest(nvim->RegisterRequest(nvim_input),
-                          NVIM_REQUEST_NAMES[nvim_input], &writer);
-        mpack_start_array(&writer, 1);
-        mpack_write_cstr(&writer, input_string);
-        mpack_finish_array(&writer);
-        size_t size = MPackFinishMessage(&writer);
-        nvim->Send(data, size);
+        auto msg = msgpackpp::make_rpc_notify("nvim_input",
+                                              (const char *)input_string);
+        nvim->Send(msg);
     }
 
     void SendInput(const char *input_chars)
     {
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+        auto msg = msgpackpp::make_rpc_notify("nvim_input", input_chars);
+        nvim->Send(msg);
+    }
 
-        MPackStartRequest(nvim->RegisterRequest(nvim_input),
-                          NVIM_REQUEST_NAMES[nvim_input], &writer);
-        mpack_start_array(&writer, 1);
-        mpack_write_cstr(&writer, input_chars);
-        mpack_finish_array(&writer);
-        size_t size = MPackFinishMessage(&writer);
-        nvim->Send(data, size);
+    const char *GetMouseBotton(MouseButton button)
+    {
+        switch (button)
+        {
+        case MouseButton::Left:
+            return "left";
+        case MouseButton::Right:
+            return "right";
+        case MouseButton::Middle:
+            return "middle";
+        case MouseButton::Wheel:
+            return "wheel";
+        default:
+            assert(false);
+            return nullptr;
+        }
+    }
+
+    const char *GetMouseAction(MouseAction action)
+    {
+        switch (action)
+        {
+        case MouseAction::Press:
+            return "press";
+        case MouseAction::Drag:
+            return "drag";
+        case MouseAction::Release:
+            return "release";
+        case MouseAction::MouseWheelUp:
+            return "up";
+        case MouseAction::MouseWheelDown:
+            return "down";
+        case MouseAction::MouseWheelLeft:
+            return "left";
+        case MouseAction::MouseWheelRight:
+            return "right";
+        default:
+            assert(false);
+            return nullptr;
+        }
     }
 
     void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
                         int mouse_col)
     {
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-        MPackStartRequest(nvim->RegisterRequest(nvim_input_mouse),
-                          NVIM_REQUEST_NAMES[nvim_input_mouse], &writer);
-        mpack_start_array(&writer, 6);
-
-        switch (button)
-        {
-        case MouseButton::Left:
-        {
-            mpack_write_cstr(&writer, "left");
-        }
-        break;
-        case MouseButton::Right:
-        {
-            mpack_write_cstr(&writer, "right");
-        }
-        break;
-        case MouseButton::Middle:
-        {
-            mpack_write_cstr(&writer, "middle");
-        }
-        break;
-        case MouseButton::Wheel:
-        {
-            mpack_write_cstr(&writer, "wheel");
-        }
-        break;
-        }
-        switch (action)
-        {
-        case MouseAction::Press:
-        {
-            mpack_write_cstr(&writer, "press");
-        }
-        break;
-        case MouseAction::Drag:
-        {
-            mpack_write_cstr(&writer, "drag");
-        }
-        break;
-        case MouseAction::Release:
-        {
-            mpack_write_cstr(&writer, "release");
-        }
-        break;
-        case MouseAction::MouseWheelUp:
-        {
-            mpack_write_cstr(&writer, "up");
-        }
-        break;
-        case MouseAction::MouseWheelDown:
-        {
-            mpack_write_cstr(&writer, "down");
-        }
-        break;
-        case MouseAction::MouseWheelLeft:
-        {
-            mpack_write_cstr(&writer, "left");
-        }
-        break;
-        case MouseAction::MouseWheelRight:
-        {
-            mpack_write_cstr(&writer, "right");
-        }
-        break;
-        }
-
         bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
         bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
         bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
@@ -350,15 +281,11 @@ struct Context
         snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s%s%s",
                  ctrl_down ? "C-" : "", shift_down ? "S-" : "",
                  alt_down ? "M-" : "");
-        mpack_write_cstr(&writer, input_string);
 
-        mpack_write_i64(&writer, 0);
-        mpack_write_i64(&writer, mouse_row);
-        mpack_write_i64(&writer, mouse_col);
-        mpack_finish_array(&writer);
-
-        size_t size = MPackFinishMessage(&writer);
-        nvim->Send(data, size);
+        auto msg = msgpackpp::make_rpc_notify(
+            "nvim_input_mouse", GetMouseBotton(button), GetMouseAction(action),
+            (const char *)input_string, 0, mouse_row, mouse_col);
+        nvim->Send(msg);
     }
 
     bool ProcessKeyDown(int virtual_key)
@@ -656,16 +583,10 @@ struct Context
         strcpy_s(file_command, MAX_PATH, "e ");
         strcat_s(file_command, MAX_PATH - 3, utf8_encoded);
 
-        char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-        mpack_writer_t writer;
-        mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-        MPackStartRequest(nvim->RegisterRequest(nvim_command),
-                          NVIM_REQUEST_NAMES[nvim_command], &writer);
-        mpack_start_array(&writer, 1);
-        mpack_write_cstr(&writer, file_command);
-        mpack_finish_array(&writer);
-        size_t size = MPackFinishMessage(&writer);
-        nvim->Send(data, size);
+        auto msg = msgpackpp::make_rpc_request(
+            nvim->RegisterRequest(nvim_command), "nvim_command",
+            (const char *)file_command);
+        nvim->Send(msg);
     }
 
     void ProcessMPackMessage(mpack_tree_t *tree)

@@ -9,6 +9,7 @@
         "LRESULT",
         "Nvim",
         "PWSTR",
-        "mpack"
+        "mpack",
+        "msgpackpp"
     ],
 }

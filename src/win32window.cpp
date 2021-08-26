@@ -165,6 +165,7 @@ void *Win32Window::Create(void *instance, const wchar_t *class_name,
                          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                          CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr,
                          (HINSTANCE)instance, this);
+
   return _hwnd;
 }
 
@@ -339,27 +340,27 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     return 0;
   }
 
-  // case WM_XBUTTONDOWN: {
-  //   int button = GET_XBUTTON_WPARAM(wparam);
-  //   if (button == XBUTTON1 && !context->xbuttons[0]) {
-  //     context->SendInput("<C-o>");
-  //     context->xbuttons[0] = true;
-  //   } else if (button == XBUTTON2 && !context->xbuttons[1]) {
-  //     context->SendInput("<C-i>");
-  //     context->xbuttons[1] = true;
-  //   }
-  //   return 0;
-  // }
+    // case WM_XBUTTONDOWN: {
+    //   int button = GET_XBUTTON_WPARAM(wparam);
+    //   if (button == XBUTTON1 && !context->xbuttons[0]) {
+    //     context->SendInput("<C-o>");
+    //     context->xbuttons[0] = true;
+    //   } else if (button == XBUTTON2 && !context->xbuttons[1]) {
+    //     context->SendInput("<C-i>");
+    //     context->xbuttons[1] = true;
+    //   }
+    //   return 0;
+    // }
 
-  // case WM_XBUTTONUP: {
-  //   int button = GET_XBUTTON_WPARAM(wparam);
-  //   if (button == XBUTTON1) {
-  //     context->xbuttons[0] = false;
-  //   } else if (button == XBUTTON2) {
-  //     context->xbuttons[1] = false;
-  //   }
-  //   return 0;
-  // }
+    // case WM_XBUTTONUP: {
+    //   int button = GET_XBUTTON_WPARAM(wparam);
+    //   if (button == XBUTTON1) {
+    //     context->xbuttons[0] = false;
+    //   } else if (button == XBUTTON2) {
+    //     context->xbuttons[1] = false;
+    //   }
+    //   return 0;
+    // }
 
     // case WM_MOUSEWHEEL:
     // {
@@ -428,4 +429,22 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
   }
 
   return DefWindowProc((HWND)hwnd, msg, wparam, lparam);
+}
+
+bool Win32Window::Loop() {
+  MSG msg;
+  uint32_t previous_width = 0, previous_height = 0;
+
+  // windows msg
+  while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
+
+    if (!GetMessage(&msg, NULL, 0, 0)) {
+      return false;
+    }
+
+    // TranslateMessage(&msg);
+    DispatchMessage(&msg);
+  }
+
+  return true;
 }

@@ -13,10 +13,10 @@ class Win32Window {
   std::wstring _class_name;
 
   bool _dead_char_pending = false;
-
+  
 public:
   ~Win32Window();
-  on_int2_t _on_resize = [](auto, auto){};
+  on_int2_t _on_resize = [](auto, auto) {};
   on_input_t _on_input;
   on_char_t _on_char;
   on_char_t _on_sys_char;
@@ -36,4 +36,6 @@ public:
                const wchar_t *window_title);
 
   uint64_t Proc(void *hwnd, uint32_t msg, uint64_t wparam, uint64_t lparam);
+
+  bool Loop();
 };

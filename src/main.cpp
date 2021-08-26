@@ -15,7 +15,6 @@
 #include <plog/Log.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
-#include <timeapi.h>
 
 static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
   auto p = config_node.get_string();
@@ -1032,43 +1031,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     context.SendMouseInput(MouseButton::Right, MouseAction::Release, row, col);
   };
 
-  MSG msg;
-  uint32_t previous_width = 0, previous_height = 0;
-
-  auto lastTime = timeGetTime();
-  while (true) {
-    // windows msg
-    while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
-
-      if (!GetMessage(&msg, NULL, 0, 0)) {
-        return msg.wParam;
-      }
-
-      // TranslateMessage(&msg);
-      DispatchMessage(&msg);
-      if (previous_width != context.saved_window_width ||
-          previous_height != context.saved_window_height) {
-        previous_width = context.saved_window_width;
-        previous_height = context.saved_window_height;
-        auto font_size = context.renderer->FontSize();
-        auto [rows, cols] = GridSize::FromWindowSize(
-            context.saved_window_width, context.saved_window_height,
-            font_size.width, font_size.height);
-        context.renderer->Resize(context.saved_window_width,
-                                 context.saved_window_height);
-        context.SendResize(rows, cols);
-      }
-    }
-
+  while (window.Loop()) {
     // process
     io_context.poll();
-
-    auto now = timeGetTime();
-    auto delta = now - lastTime;
-    lastTime = now;
-    if (delta < 30) {
-      Sleep(30 - delta);
-    }
   }
 
   return 0;

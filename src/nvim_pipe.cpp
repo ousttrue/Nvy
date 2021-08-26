@@ -1,54 +1,26 @@
+#include <Windows.h>
 #include "nvim_pipe.h"
 #include "window_messages.h"
 #include <plog/Log.h>
 #include <msgpackpp/msgpackpp.h>
 #include <stdint.h>
+#include <thread>
 
-static DWORD WINAPI NvimMessageHandler(LPVOID param)
+static HANDLE _stdin_read = nullptr;
+static HANDLE _stdin_write = nullptr;
+void *NvimPipe::WriteHandle()
 {
-    auto nvim = (NvimPipe *)param;
-
-    std::vector<uint8_t> buffer(1024 * 1024);
-    while (true)
-    {
-        DWORD bytes_read;
-        BOOL success =
-            ReadFile(nvim->_stdout_read, buffer.data(),
-                     static_cast<DWORD>(buffer.size()), &bytes_read, nullptr);
-        if (!success)
-        {
-            break;
-        }
-
-        if (bytes_read)
-        {
-            nvim->Enqueue({buffer.data(), buffer.data() + bytes_read});
-        }
-    }
-
-    nvim->Enqueue({});
-    return 0;
+    return _stdin_write;
 }
-
-static DWORD WINAPI NvimProcessMonitor(LPVOID param)
+static HANDLE _stdout_read = nullptr;
+void *NvimPipe::ReadHandle()
 {
-    auto nvim = static_cast<NvimPipe *>(param);
-    while (true)
-    {
-        DWORD exit_code;
-        if (GetExitCodeProcess(nvim->_process_info.hProcess, &exit_code) &&
-            exit_code == STILL_ACTIVE)
-        {
-            Sleep(1);
-        }
-        else
-        {
-            break;
-        }
-    }
-    nvim->Enqueue({});
-    return 0;
+    return _stdout_read;
 }
+static HANDLE _stdout_write = nullptr;
+static PROCESS_INFORMATION _process_info = {0};
+
+std::thread _watch;
 
 NvimPipe::NvimPipe()
 {
@@ -61,12 +33,18 @@ NvimPipe::~NvimPipe()
 
     if (exit_code == STILL_ACTIVE)
     {
+        if (_watch.joinable())
+        {
+            _watch.join();
+        }
+
         CloseHandle(_stdin_read);
         CloseHandle(_stdin_write);
         CloseHandle(_stdout_read);
         CloseHandle(_stdout_write);
         CloseHandle(_process_info.hThread);
         TerminateProcess(_process_info.hProcess, 0);
+        WaitForSingleObject(_process_info.hProcess, INFINITE);
         CloseHandle(_process_info.hProcess);
     }
 }
@@ -97,6 +75,13 @@ bool NvimPipe::Launch(const wchar_t *command_line)
     {
         return false;
     }
+    _watch = std::thread(
+        []()
+        {
+            WaitForSingleObject(_process_info.hProcess, INFINITE);
+            CancelSynchronousIo(_stdout_read);
+            CloseHandle(_process_info.hProcess);
+        });
 
     HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info{
@@ -106,56 +91,5 @@ bool NvimPipe::Launch(const wchar_t *command_line)
                             &job_info, sizeof(job_info));
     AssignProcessToJobObject(job_object, _process_info.hProcess);
 
-    DWORD _;
-    CreateThread(nullptr, 0, NvimMessageHandler, this, 0, &_);
-    CreateThread(nullptr, 0, NvimProcessMonitor, this, 0, &_);
-
-    return true;
-}
-
-void NvimPipe::Send(const void *data, size_t size)
-{
-    auto u = msgpackpp::parser((const uint8_t *)data, size);
-    PLOG_DEBUG << u.to_json();
-
-    DWORD bytes_written;
-    bool success = WriteFile(_stdin_write, data, static_cast<DWORD>(size),
-                             &bytes_written, nullptr);
-    if (!success)
-    {
-        assert(false);
-    }
-}
-
-int64_t NvimPipe::RegisterRequest(NvimRequest request)
-{
-    _msg_id_to_method.push_back(request);
-    return _next_msg_id++;
-}
-
-NvimRequest NvimPipe::GetRequestFromID(size_t id) const
-{
-    assert(id <= _next_msg_id);
-    return _msg_id_to_method[id];
-}
-
-void NvimPipe::Enqueue(const NvimMessage &msg)
-{
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    _queue.push(msg);
-}
-
-bool NvimPipe::TryDequeue(NvimMessage *msg)
-{
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    if (_queue.empty())
-    {
-        return false;
-    }
-
-    *msg = _queue.front();
-    _queue.pop();
     return true;
 }

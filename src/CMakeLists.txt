@@ -12,6 +12,7 @@ target_sources(Nvy PUBLIC
 target_link_libraries(Nvy PUBLIC 
     plog
     msgpackpp
+    asio
     user32.lib 
     d3d11.lib 
     d2d1.lib 
@@ -24,6 +25,7 @@ target_link_libraries(Nvy PUBLIC
 target_compile_definitions(Nvy PUBLIC
     UNICODE
     NOMINMAX
+    WIN32_LEAN_AND_MEAN
 )
 
 if(MSVC)

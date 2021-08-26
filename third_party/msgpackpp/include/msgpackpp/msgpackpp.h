@@ -2258,6 +2258,7 @@ struct nil_t {};
 constexpr nil_t nil = nil_t{};
 inline void serialize(packer &p, const nil_t) { p.pack_nil(); }
 inline void serialize(packer &p, const char *t) { p.pack_str(t); }
+inline void serialize(packer &p, std::string_view t) { p.pack_str(t); }
 inline void serialize(packer &p, bool t) { p.pack_bool(t); }
 
 inline void serialize(packer &p, signed char t) { p.pack_integer(t); }

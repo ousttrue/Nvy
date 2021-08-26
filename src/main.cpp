@@ -92,7 +92,6 @@ struct Context {
   // NvimPipe *nvim = nullptr;
   std::function<void(const std::vector<uint8_t> &)> nvim_send;
   Renderer *renderer = nullptr;
-  bool dead_char_pending = false;
   bool xbuttons[2] = {false, false};
   GridPoint cached_cursor_grid_pos = {};
   WINDOWPLACEMENT saved_window_placement = {.length = sizeof(WINDOWPLACEMENT)};
@@ -181,7 +180,7 @@ struct Context {
     nvim_send(msg);
   }
 
-  void SendInput(const char *input_chars) {
+  void SendInput(std::string_view input_chars) {
     auto msg = msgpackpp::make_rpc_notify("nvim_input", input_chars);
     nvim_send(msg);
   }
@@ -946,6 +945,92 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     io_context.stop();
     t.join();
   }
+
+  //
+  window._on_resize = [&context](int w, int h) {
+    context.saved_window_height = h;
+    context.saved_window_width = w;
+  };
+  window._on_input = [&context](auto input) {
+    context.SendInput(input.data());
+  };
+  window._on_char = [&context](auto ch) { context.SendChar(ch); };
+  window._on_sys_char = [&context](auto ch) { context.SendSysChar(ch); };
+  window._on_toggle_screen = [&context]() { context.ToggleFullscreen(); };
+  window._on_modified_input = [&context](auto input) {
+    context.NvimSendModifiedInput(input.data(), true);
+  };
+  // mouse drag
+  window._on_mouse_left_drag = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto grid_pos =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    if (context.cached_cursor_grid_pos.col != grid_pos.col ||
+        context.cached_cursor_grid_pos.row != grid_pos.row) {
+      context.SendMouseInput(MouseButton::Left, MouseAction::Drag, grid_pos.row,
+                             grid_pos.col);
+      context.cached_cursor_grid_pos = grid_pos;
+    }
+  };
+  window._on_mouse_middle_drag = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto grid_pos =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    if (context.cached_cursor_grid_pos.col != grid_pos.col ||
+        context.cached_cursor_grid_pos.row != grid_pos.row) {
+      context.SendMouseInput(MouseButton::Middle, MouseAction::Drag,
+                             grid_pos.row, grid_pos.col);
+      context.cached_cursor_grid_pos = grid_pos;
+    }
+  };
+  window._on_mouse_right_drag = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto grid_pos =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    if (context.cached_cursor_grid_pos.col != grid_pos.col ||
+        context.cached_cursor_grid_pos.row != grid_pos.row) {
+      context.SendMouseInput(MouseButton::Right, MouseAction::Drag,
+                             grid_pos.row, grid_pos.col);
+      context.cached_cursor_grid_pos = grid_pos;
+    }
+  };
+  // mouse button
+  window._on_mouse_left_down = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto [row, col] =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    context.SendMouseInput(MouseButton::Left, MouseAction::Press, row, col);
+  };
+  window._on_mouse_middle_down = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto [row, col] =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    context.SendMouseInput(MouseButton::Middle, MouseAction::Press, row, col);
+  };
+  window._on_mouse_right_down = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto [row, col] =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    context.SendMouseInput(MouseButton::Right, MouseAction::Press, row, col);
+  };
+  window._on_mouse_left_release = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto [row, col] =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    context.SendMouseInput(MouseButton::Left, MouseAction::Release, row, col);
+  };
+  window._on_mouse_middle_release = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto [row, col] =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    context.SendMouseInput(MouseButton::Middle, MouseAction::Release, row, col);
+  };
+  window._on_mouse_right_release = [&context](int x, int y) {
+    auto fontSize = context.renderer->FontSize();
+    auto [row, col] =
+        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+    context.SendMouseInput(MouseButton::Right, MouseAction::Release, row, col);
+  };
 
   MSG msg;
   uint32_t previous_width = 0, previous_height = 0;

@@ -1,6 +1,8 @@
 #include "win32window.h"
 #include <Windows.h>
 
+WINDOWPLACEMENT saved_window_placement = {.length = sizeof(WINDOWPLACEMENT)};
+
 static const char *GetProcessKey(int virtual_key) {
   switch (virtual_key) {
   case VK_BACK:
@@ -447,4 +449,34 @@ bool Win32Window::Loop() {
   }
 
   return true;
+}
+
+void Win32Window::ToggleFullscreen() {
+  auto hwnd = (HWND)_hwnd;
+  DWORD style = GetWindowLong(hwnd, GWL_STYLE);
+  MONITORINFO mi{.cbSize = sizeof(MONITORINFO)};
+  if (style & WS_OVERLAPPEDWINDOW) {
+    if (GetWindowPlacement(hwnd, &saved_window_placement) &&
+        GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                       &mi)) {
+      SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+      SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
+                   mi.rcMonitor.right - mi.rcMonitor.left,
+                   mi.rcMonitor.bottom - mi.rcMonitor.top,
+                   SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+  } else {
+    SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+    SetWindowPlacement(hwnd, &saved_window_placement);
+    SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+                     SWP_FRAMECHANGED);
+  }
+}
+
+void Win32Window::Resize(int w, int h) {
+  RECT client_rect;
+  auto hwnd = (HWND)_hwnd;
+  GetClientRect(hwnd, &client_rect);
+  MoveWindow(hwnd, client_rect.left, client_rect.top, w, h, false);
 }

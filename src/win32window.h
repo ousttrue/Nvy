@@ -13,7 +13,7 @@ class Win32Window {
   std::wstring _class_name;
 
   bool _dead_char_pending = false;
-  
+
 public:
   ~Win32Window();
   on_int2_t _on_resize = [](auto, auto) {};
@@ -38,4 +38,6 @@ public:
   uint64_t Proc(void *hwnd, uint32_t msg, uint64_t wparam, uint64_t lparam);
 
   bool Loop();
+  void ToggleFullscreen();
+  void Resize(int w, int h);
 };

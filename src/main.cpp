@@ -1,11 +1,10 @@
 #include "grid.h"
-#include "nvim_pipe.h"
+#include "nvim_frontend.h"
 #include "renderer.h"
 #include "vec.h"
 #include "win32window.h"
 #include "window_messages.h"
 #include <Windows.h>
-#include <dwmapi.h>
 #include <msgpackpp/msgpackpp.h>
 #include <msgpackpp/rpc.h>
 #include <msgpackpp/windows_pipe_transport.h>
@@ -14,423 +13,6 @@
 #include <plog/Init.h>
 #include <plog/Log.h>
 #include <shellapi.h>
-#include <shellscalingapi.h>
-
-static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
-  auto p = config_node.get_string();
-  std::string path(p.begin(), p.end());
-  path += "\\init.vim";
-
-  HANDLE config_file =
-      CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-  std::vector<char> guifont_out;
-  if (config_file == INVALID_HANDLE_VALUE) {
-    return guifont_out;
-  }
-
-  char *buffer;
-  LARGE_INTEGER file_size;
-  if (!GetFileSizeEx(config_file, &file_size)) {
-    CloseHandle(config_file);
-    return guifont_out;
-  }
-  buffer = static_cast<char *>(malloc(file_size.QuadPart));
-
-  DWORD bytes_read;
-  if (!ReadFile(config_file, buffer, file_size.QuadPart, &bytes_read, NULL)) {
-    CloseHandle(config_file);
-    free(buffer);
-    return guifont_out;
-  }
-  CloseHandle(config_file);
-
-  char *strtok_context;
-  char *line = strtok_s(buffer, "\r\n", &strtok_context);
-  while (line) {
-    char *guifont = strstr(line, "set guifont=");
-    if (guifont) {
-      // Check if we're inside a comment
-      int leading_count = guifont - line;
-      bool inside_comment = false;
-      for (int i = 0; i < leading_count; ++i) {
-        if (line[i] == '"') {
-          inside_comment = !inside_comment;
-        }
-      }
-      if (!inside_comment) {
-        guifont_out.clear();
-
-        int line_offset = (guifont - line + strlen("set guifont="));
-        int guifont_strlen = strlen(line) - line_offset;
-        int escapes = 0;
-        for (int i = 0; i < guifont_strlen; ++i) {
-          if (line[line_offset + i] == '\\' && i < (guifont_strlen - 1) &&
-              line[line_offset + i + 1] == ' ') {
-            guifont_out.push_back(' ');
-            ++i;
-            continue;
-          }
-          guifont_out.push_back(line[i + line_offset]);
-        }
-        guifont_out.push_back('\0');
-      }
-    }
-    line = strtok_s(NULL, "\r\n", &strtok_context);
-  }
-
-  free(buffer);
-  return guifont_out;
-}
-
-struct Context {
-  GridSize start_grid_size = {};
-  bool start_maximized = false;
-  HWND hwnd = nullptr;
-  // NvimPipe *nvim = nullptr;
-  std::function<void(const std::vector<uint8_t> &)> nvim_send;
-  Renderer *renderer = nullptr;
-  bool xbuttons[2] = {false, false};
-  GridPoint cached_cursor_grid_pos = {};
-  WINDOWPLACEMENT saved_window_placement = {.length = sizeof(WINDOWPLACEMENT)};
-  UINT saved_dpi_scaling = 0;
-  uint32_t saved_window_width = 0;
-  uint32_t saved_window_height = 0;
-  Grid _grid;
-
-  Context(int rows, int cols, bool start_maximized)
-      : start_grid_size({.rows = rows, .cols = cols}),
-        start_maximized(start_maximized) {}
-
-  void ToggleFullscreen() {
-    DWORD style = GetWindowLong(hwnd, GWL_STYLE);
-    MONITORINFO mi{.cbSize = sizeof(MONITORINFO)};
-    if (style & WS_OVERLAPPEDWINDOW) {
-      if (GetWindowPlacement(hwnd, &saved_window_placement) &&
-          GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
-                         &mi)) {
-        SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
-        SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
-                     mi.rcMonitor.right - mi.rcMonitor.left,
-                     mi.rcMonitor.bottom - mi.rcMonitor.top,
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-      }
-    } else {
-      SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
-      SetWindowPlacement(hwnd, &saved_window_placement);
-      SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
-                       SWP_FRAMECHANGED);
-    }
-  }
-
-  void SendResize(int grid_rows, int grid_cols) {
-    auto msg =
-        msgpackpp::make_rpc_notify("nvim_ui_try_resize", grid_cols, grid_rows);
-    nvim_send(msg);
-  }
-
-  void SendChar(wchar_t input_char) {
-    // If the space is simply a regular space,
-    // simply send the modified input
-    if (input_char == VK_SPACE) {
-      NvimSendModifiedInput("Space", true);
-      return;
-    }
-
-    char utf8_encoded[64]{};
-    if (!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
-      return;
-    }
-    WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL,
-                        NULL);
-
-    auto msg =
-        msgpackpp::make_rpc_notify("nvim_input", (const char *)utf8_encoded);
-    nvim_send(msg);
-  }
-
-  void SendSysChar(wchar_t input_char) {
-    char utf8_encoded[64]{};
-    if (!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
-      return;
-    }
-    WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL,
-                        NULL);
-
-    NvimSendModifiedInput(utf8_encoded, true);
-  }
-
-  void NvimSendModifiedInput(const char *input, bool virtual_key) {
-    bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-    bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-    bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
-
-    constexpr int MAX_INPUT_STRING_SIZE = 64;
-    char input_string[MAX_INPUT_STRING_SIZE];
-
-    snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s%s>",
-             ctrl_down ? "C-" : "", shift_down ? "S-" : "",
-             alt_down ? "M-" : "", input);
-
-    auto msg =
-        msgpackpp::make_rpc_notify("nvim_input", (const char *)input_string);
-    nvim_send(msg);
-  }
-
-  void SendInput(std::string_view input_chars) {
-    auto msg = msgpackpp::make_rpc_notify("nvim_input", input_chars);
-    nvim_send(msg);
-  }
-
-  const char *GetMouseBotton(MouseButton button) {
-    switch (button) {
-    case MouseButton::Left:
-      return "left";
-    case MouseButton::Right:
-      return "right";
-    case MouseButton::Middle:
-      return "middle";
-    case MouseButton::Wheel:
-      return "wheel";
-    default:
-      assert(false);
-      return nullptr;
-    }
-  }
-
-  const char *GetMouseAction(MouseAction action) {
-    switch (action) {
-    case MouseAction::Press:
-      return "press";
-    case MouseAction::Drag:
-      return "drag";
-    case MouseAction::Release:
-      return "release";
-    case MouseAction::MouseWheelUp:
-      return "up";
-    case MouseAction::MouseWheelDown:
-      return "down";
-    case MouseAction::MouseWheelLeft:
-      return "left";
-    case MouseAction::MouseWheelRight:
-      return "right";
-    default:
-      assert(false);
-      return nullptr;
-    }
-  }
-
-  void SendMouseInput(MouseButton button, MouseAction action, int mouse_row,
-                      int mouse_col) {
-    bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-    bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-    bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
-    constexpr int MAX_INPUT_STRING_SIZE = 64;
-    char input_string[MAX_INPUT_STRING_SIZE];
-    snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s%s%s",
-             ctrl_down ? "C-" : "", shift_down ? "S-" : "",
-             alt_down ? "M-" : "");
-
-    auto msg = msgpackpp::make_rpc_notify(
-        "nvim_input_mouse", GetMouseBotton(button), GetMouseAction(action),
-        (const char *)input_string, 0, mouse_row, mouse_col);
-    nvim_send(msg);
-  }
-
-  bool ProcessKeyDown(int virtual_key) {
-    const char *key;
-    switch (virtual_key) {
-    case VK_BACK: {
-      key = "BS";
-    } break;
-    case VK_TAB: {
-      key = "Tab";
-    } break;
-    case VK_RETURN: {
-      key = "CR";
-    } break;
-    case VK_ESCAPE: {
-      key = "Esc";
-    } break;
-    case VK_PRIOR: {
-      key = "PageUp";
-    } break;
-    case VK_NEXT: {
-      key = "PageDown";
-    } break;
-    case VK_HOME: {
-      key = "Home";
-    } break;
-    case VK_END: {
-      key = "End";
-    } break;
-    case VK_LEFT: {
-      key = "Left";
-    } break;
-    case VK_UP: {
-      key = "Up";
-    } break;
-    case VK_RIGHT: {
-      key = "Right";
-    } break;
-    case VK_DOWN: {
-      key = "Down";
-    } break;
-    case VK_INSERT: {
-      key = "Insert";
-    } break;
-    case VK_DELETE: {
-      key = "Del";
-    } break;
-    case VK_NUMPAD0: {
-      key = "k0";
-    } break;
-    case VK_NUMPAD1: {
-      key = "k1";
-    } break;
-    case VK_NUMPAD2: {
-      key = "k2";
-    } break;
-    case VK_NUMPAD3: {
-      key = "k3";
-    } break;
-    case VK_NUMPAD4: {
-      key = "k4";
-    } break;
-    case VK_NUMPAD5: {
-      key = "k5";
-    } break;
-    case VK_NUMPAD6: {
-      key = "k6";
-    } break;
-    case VK_NUMPAD7: {
-      key = "k7";
-    } break;
-    case VK_NUMPAD8: {
-      key = "k8";
-    } break;
-    case VK_NUMPAD9: {
-      key = "k9";
-    } break;
-    case VK_MULTIPLY: {
-      key = "kMultiply";
-    } break;
-    case VK_ADD: {
-      key = "kPlus";
-    } break;
-    case VK_SEPARATOR: {
-      key = "kComma";
-    } break;
-    case VK_SUBTRACT: {
-      key = "kMinus";
-    } break;
-    case VK_DECIMAL: {
-      key = "kPoint";
-    } break;
-    case VK_DIVIDE: {
-      key = "kDivide";
-    } break;
-    case VK_F1: {
-      key = "F1";
-    } break;
-    case VK_F2: {
-      key = "F2";
-    } break;
-    case VK_F3: {
-      key = "F3";
-    } break;
-    case VK_F4: {
-      key = "F4";
-    } break;
-    case VK_F5: {
-      key = "F5";
-    } break;
-    case VK_F6: {
-      key = "F6";
-    } break;
-    case VK_F7: {
-      key = "F7";
-    } break;
-    case VK_F8: {
-      key = "F8";
-    } break;
-    case VK_F9: {
-      key = "F9";
-    } break;
-    case VK_F10: {
-      key = "F10";
-    } break;
-    case VK_F11: {
-      key = "F11";
-    } break;
-    case VK_F12: {
-      key = "F12";
-    } break;
-    case VK_F13: {
-      key = "F13";
-    } break;
-    case VK_F14: {
-      key = "F14";
-    } break;
-    case VK_F15: {
-      key = "F15";
-    } break;
-    case VK_F16: {
-      key = "F16";
-    } break;
-    case VK_F17: {
-      key = "F17";
-    } break;
-    case VK_F18: {
-      key = "F18";
-    } break;
-    case VK_F19: {
-      key = "F19";
-    } break;
-    case VK_F20: {
-      key = "F20";
-    } break;
-    case VK_F21: {
-      key = "F21";
-    } break;
-    case VK_F22: {
-      key = "F22";
-    } break;
-    case VK_F23: {
-      key = "F23";
-    } break;
-    case VK_F24: {
-      key = "F24";
-    } break;
-    default: {
-    }
-      return false;
-    }
-
-    NvimSendModifiedInput(key, true);
-    return true;
-  }
-
-  void OpenFile(const wchar_t *file_name) {
-    char utf8_encoded[MAX_PATH]{};
-    WideCharToMultiByte(CP_UTF8, 0, file_name, -1, utf8_encoded, MAX_PATH, NULL,
-                        NULL);
-
-    char file_command[MAX_PATH + 2] = {};
-    strcpy_s(file_command, MAX_PATH, "e ");
-    strcat_s(file_command, MAX_PATH - 3, utf8_encoded);
-
-    // TODO:
-    // auto msg = msgpackpp::make_rpc_request(
-    //     nvim->RegisterRequest(nvim_command), "nvim_command",
-    //     (const char *)file_command);
-    // nvim_send(msg);
-  }
-
-  std::vector<uint8_t> m_buffer;
-};
 
 const int MAX_NVIM_CMD_LINE_SIZE = 32767;
 struct CommandLine {
@@ -825,215 +407,136 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
   auto cmd = CommandLine::Get();
 
-  Context context(cmd.rows, cmd.cols, cmd.start_maximized);
-
   Win32Window window;
   auto hwnd = (HWND)window.Create(instance, L"Nvy_Class", L"Nvy");
   if (!hwnd) {
     return 1;
   }
 
-  NvimPipe nvim;
+  Grid grid;
+  // context._grid.OnSizeChanged([&context](const GridSize &size) {
+  //   context.SendResize(size.rows, size.cols);
+  // });
+
+  Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
+                    &grid.hl(0));
+
+  NvimFrontend nvim;
   if (!nvim.Launch(cmd.nvim_command_line)) {
     return 3;
   }
 
-  context._grid.OnSizeChanged([&context](const GridSize &size) {
-    context.SendResize(size.rows, size.cols);
-  });
-  context.hwnd = hwnd;
-  RECT window_rect;
-  DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
-                        sizeof(RECT));
-  HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
-                                      MONITOR_DEFAULTTONEAREST);
-  GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling),
-                   &(context.saved_dpi_scaling));
-
-  Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-                    context.saved_dpi_scaling, &context._grid.hl(0));
-  context.renderer = &renderer;
-
-  msgpackpp::rpc_base<msgpackpp::WindowsPipeTransport> rpc;
-  context.nvim_send = [&rpc](const std::vector<uint8_t> &data) {
-    rpc.write_async(data);
-  };
-  RedrawDispatch redraw{
-      &renderer,
-      &context._grid,
-      hwnd,
-  };
-  rpc.add_proc("redraw",
-               [&redraw](const msgpackpp::parser &msg) -> std::vector<uint8_t> {
-                 redraw.Dispatch(msg);
-                 return {};
-               });
-
-  asio::io_context io_context;
-
-  {
-    // synchronous
-    asio::io_context::work work(io_context);
-    std::thread t([&io_context]() { io_context.run(); });
-    rpc.attach(msgpackpp::WindowsPipeTransport(io_context, nvim.ReadHandle(),
-                                               nvim.WriteHandle()));
-
-    {
-      auto result = rpc.request_async("nvim_get_api_info").get();
-      // TODO:
-      // mpack_node_t top_level_map =
-      //     mpack_node_array_at(result.params, 1);
-      // mpack_node_t version_map =
-      //     mpack_node_map_value_at(top_level_map, 0);
-      // int64_t api_level =
-      //     mpack_node_map_cstr(version_map, "api_level")
-      //         .data->value.i;
-      // assert(api_level > 6);
-    }
-
-    { rpc.notify("nvim_set_var", "nvy", 1); }
-
-    {
-      auto result = rpc.request_async("nvim_eval", "stdpath('config')").get();
-
-      msgpackpp::parser msg(result);
-
-      auto guifont_buffer = ParseConfig(msg[3]);
-      if (!guifont_buffer.empty()) {
-        context.renderer->UpdateGuiFont(guifont_buffer.data(),
-                                        strlen(guifont_buffer.data()));
-      }
-
-      if (context.start_grid_size.rows != 0 &&
-          context.start_grid_size.cols != 0) {
-        PixelSize start_size = context.renderer->GridToPixelSize(
-            context.start_grid_size.rows, context.start_grid_size.cols);
-        RECT client_rect;
-        GetClientRect(hwnd, &client_rect);
-        MoveWindow(hwnd, client_rect.left, client_rect.top, start_size.width,
-                   start_size.height, false);
-      }
-
-      // Attach the renderer now that the window size is
-      // determined
-      context.renderer->Attach();
-      auto size = context.renderer->Size();
-      auto fontSize = context.renderer->FontSize();
-      auto grid = GridSize::FromWindowSize(size.width, size.height,
-                                           fontSize.width, fontSize.height);
-      // context.SendUIAttach(grid.rows, grid.cols);
-      // void SendUIAttach(int grid_rows, int grid_cols)
-      {
-        // Send UI attach notification
-        msgpackpp::packer args;
-        args.pack_array(3);
-        args << 190;
-        args << 45;
-        args.pack_map(1);
-        args << "ext_linegrid" << true;
-        auto msg = msgpackpp::make_rpc_notify_packed("nvim_ui_attach",
-                                                     args.get_payload());
-        rpc.write_async(msg);
-      }
-
-      if (context.start_maximized) {
-        context.ToggleFullscreen();
-      }
-      ShowWindow(hwnd, SW_SHOWDEFAULT);
-    }
-    io_context.stop();
-    t.join();
+  // setfont
+  auto guifont_buffer = nvim.Initialize();
+  if (!guifont_buffer.empty()) {
+    renderer.UpdateGuiFont(guifont_buffer.data(), guifont_buffer.size());
   }
 
-  //
-  window._on_resize = [&context](int w, int h) {
-    context.saved_window_height = h;
-    context.saved_window_width = w;
-  };
-  window._on_input = [&context](auto input) {
-    context.SendInput(input.data());
-  };
-  window._on_char = [&context](auto ch) { context.SendChar(ch); };
-  window._on_sys_char = [&context](auto ch) { context.SendSysChar(ch); };
-  window._on_toggle_screen = [&context]() { context.ToggleFullscreen(); };
-  window._on_modified_input = [&context](auto input) {
-    context.NvimSendModifiedInput(input.data(), true);
-  };
-  // mouse drag
-  window._on_mouse_left_drag = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto grid_pos =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    if (context.cached_cursor_grid_pos.col != grid_pos.col ||
-        context.cached_cursor_grid_pos.row != grid_pos.row) {
-      context.SendMouseInput(MouseButton::Left, MouseAction::Drag, grid_pos.row,
-                             grid_pos.col);
-      context.cached_cursor_grid_pos = grid_pos;
-    }
-  };
-  window._on_mouse_middle_drag = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto grid_pos =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    if (context.cached_cursor_grid_pos.col != grid_pos.col ||
-        context.cached_cursor_grid_pos.row != grid_pos.row) {
-      context.SendMouseInput(MouseButton::Middle, MouseAction::Drag,
-                             grid_pos.row, grid_pos.col);
-      context.cached_cursor_grid_pos = grid_pos;
-    }
-  };
-  window._on_mouse_right_drag = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto grid_pos =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    if (context.cached_cursor_grid_pos.col != grid_pos.col ||
-        context.cached_cursor_grid_pos.row != grid_pos.row) {
-      context.SendMouseInput(MouseButton::Right, MouseAction::Drag,
-                             grid_pos.row, grid_pos.col);
-      context.cached_cursor_grid_pos = grid_pos;
-    }
-  };
-  // mouse button
-  window._on_mouse_left_down = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto [row, col] =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    context.SendMouseInput(MouseButton::Left, MouseAction::Press, row, col);
-  };
-  window._on_mouse_middle_down = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto [row, col] =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    context.SendMouseInput(MouseButton::Middle, MouseAction::Press, row, col);
-  };
-  window._on_mouse_right_down = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto [row, col] =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    context.SendMouseInput(MouseButton::Right, MouseAction::Press, row, col);
-  };
-  window._on_mouse_left_release = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto [row, col] =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    context.SendMouseInput(MouseButton::Left, MouseAction::Release, row, col);
-  };
-  window._on_mouse_middle_release = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto [row, col] =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    context.SendMouseInput(MouseButton::Middle, MouseAction::Release, row, col);
-  };
-  window._on_mouse_right_release = [&context](int x, int y) {
-    auto fontSize = context.renderer->FontSize();
-    auto [row, col] =
-        GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-    context.SendMouseInput(MouseButton::Right, MouseAction::Release, row, col);
-  };
+  // initial window size
+  if (cmd.start_maximized) {
+    window.ToggleFullscreen();
+  } else if (cmd.rows != 0 && cmd.cols != 0) {
+    PixelSize start_size = renderer.GridToPixelSize(cmd.rows, cmd.cols);
+    window.Resize(start_size.width, start_size.height);
+  }
+  ShowWindow(hwnd, SW_SHOWDEFAULT);
+
+  // Attach the renderer now that the window size is
+  // determined
+  renderer.Attach();
+  auto size = renderer.Size();
+  auto fontSize = renderer.FontSize();
+  auto gridSize = GridSize::FromWindowSize(size.width, size.height, fontSize.width,
+                                       fontSize.height);
+
+  // //
+  // window._on_resize = [&context](int w, int h) {
+  //   context.saved_window_height = h;
+  //   context.saved_window_width = w;
+  // };
+  // window._on_input = [&context](auto input) {
+  //   context.SendInput(input.data());
+  // };
+  // window._on_char = [&context](auto ch) { context.SendChar(ch); };
+  // window._on_sys_char = [&context](auto ch) { context.SendSysChar(ch); };
+  // window._on_toggle_screen = [&context]() { context.ToggleFullscreen(); };
+  // window._on_modified_input = [&context](auto input) {
+  //   context.NvimSendModifiedInput(input.data(), true);
+  // };
+  // // mouse drag
+  // window._on_mouse_left_drag = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto grid_pos =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   if (context.cached_cursor_grid_pos.col != grid_pos.col ||
+  //       context.cached_cursor_grid_pos.row != grid_pos.row) {
+  //     context.SendMouseInput(MouseButton::Left, MouseAction::Drag, grid_pos.row,
+  //                            grid_pos.col);
+  //     context.cached_cursor_grid_pos = grid_pos;
+  //   }
+  // };
+  // window._on_mouse_middle_drag = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto grid_pos =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   if (context.cached_cursor_grid_pos.col != grid_pos.col ||
+  //       context.cached_cursor_grid_pos.row != grid_pos.row) {
+  //     context.SendMouseInput(MouseButton::Middle, MouseAction::Drag,
+  //                            grid_pos.row, grid_pos.col);
+  //     context.cached_cursor_grid_pos = grid_pos;
+  //   }
+  // };
+  // window._on_mouse_right_drag = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto grid_pos =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   if (context.cached_cursor_grid_pos.col != grid_pos.col ||
+  //       context.cached_cursor_grid_pos.row != grid_pos.row) {
+  //     context.SendMouseInput(MouseButton::Right, MouseAction::Drag,
+  //                            grid_pos.row, grid_pos.col);
+  //     context.cached_cursor_grid_pos = grid_pos;
+  //   }
+  // };
+  // // mouse button
+  // window._on_mouse_left_down = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto [row, col] =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   context.SendMouseInput(MouseButton::Left, MouseAction::Press, row, col);
+  // };
+  // window._on_mouse_middle_down = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto [row, col] =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   context.SendMouseInput(MouseButton::Middle, MouseAction::Press, row, col);
+  // };
+  // window._on_mouse_right_down = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto [row, col] =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   context.SendMouseInput(MouseButton::Right, MouseAction::Press, row, col);
+  // };
+  // window._on_mouse_left_release = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto [row, col] =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   context.SendMouseInput(MouseButton::Left, MouseAction::Release, row, col);
+  // };
+  // window._on_mouse_middle_release = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto [row, col] =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   context.SendMouseInput(MouseButton::Middle, MouseAction::Release, row, col);
+  // };
+  // window._on_mouse_right_release = [&context](int x, int y) {
+  //   auto fontSize = renderer.FontSize();
+  //   auto [row, col] =
+  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
+  //   context.SendMouseInput(MouseButton::Right, MouseAction::Release, row, col);
+  // };
 
   while (window.Loop()) {
-    // process
-    io_context.poll();
+    nvim.Process();
   }
 
   return 0;

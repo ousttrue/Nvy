@@ -12,4 +12,7 @@
         "mpack",
         "msgpackpp"
     ],
+    "files.associations": {
+        "*.ipp": "cpp"
+    },
 }

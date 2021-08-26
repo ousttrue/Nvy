@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <d2d1_3.h>
 #include <d3d11_4.h>
+#include <dwmapi.h>
+#include <shellscalingapi.h>
 #include <tuple>
 #include <vector>
 using namespace Microsoft::WRL;
@@ -503,13 +505,25 @@ public:
   }
 };
 
+static UINT GetMonitorDpi(HWND hwnd) {
+  RECT window_rect;
+  DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
+                        sizeof(RECT));
+  HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
+                                      MONITOR_DEFAULTTONEAREST);
+
+  UINT dpi = 0;
+  GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi, &dpi);
+  return dpi;
+}
+
 ///
 /// Renderer
 ///
 Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-                   float monitor_dpi, const HighlightAttribute *defaultHL)
-    : _dwrite(
-          DWriteImpl::Create(disable_ligatures, linespace_factor, monitor_dpi)),
+                   const HighlightAttribute *defaultHL)
+    : _dwrite(DWriteImpl::Create(disable_ligatures, linespace_factor,
+                                 GetMonitorDpi(hwnd))),
       _defaultHL(defaultHL) {
   this->_hwnd = hwnd;
   this->HandleDeviceLost();

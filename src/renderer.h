@@ -34,7 +34,7 @@ class Renderer {
 
 public:
   Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
-           float monitor_dpi, const HighlightAttribute *defaultHL);
+           const HighlightAttribute *defaultHL);
   ~Renderer();
   // backbuffer
   D2D1_SIZE_U Size() const { return _pixel_size; }

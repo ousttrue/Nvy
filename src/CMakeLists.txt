@@ -1,7 +1,7 @@
 add_executable(Nvy WIN32 ${THIRDPARTY_DIR}/nvim/nvim_icon.rc)
 
-target_sources(Nvy PUBLIC "main.cpp" "nvim_pipe.cpp" "renderer.cpp" "grid.cpp"
-                          "win32window.cpp")
+target_sources(Nvy PUBLIC "main.cpp" "nvim_frontend.cpp" "nvim_pipe.cpp"
+                          "renderer.cpp" "grid.cpp" "win32window.cpp")
 
 target_link_libraries(
   Nvy

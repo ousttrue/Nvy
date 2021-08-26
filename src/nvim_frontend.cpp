@@ -1,5 +1,6 @@
 #include "nvim_frontend.h"
 #include "nvim_pipe.h"
+#include "win32window.h"
 #include <asio.hpp>
 #include <msgpackpp/msgpackpp.h>
 #include <msgpackpp/rpc.h>
@@ -7,44 +8,6 @@
 #include <plog/Log.h>
 #include <thread>
 #include <vector>
-
-static const char *GetMouseBotton(MouseButton button) {
-  switch (button) {
-  case MouseButton::Left:
-    return "left";
-  case MouseButton::Right:
-    return "right";
-  case MouseButton::Middle:
-    return "middle";
-  case MouseButton::Wheel:
-    return "wheel";
-  default:
-    assert(false);
-    return nullptr;
-  }
-}
-
-static const char *GetMouseAction(MouseAction action) {
-  switch (action) {
-  case MouseAction::Press:
-    return "press";
-  case MouseAction::Drag:
-    return "drag";
-  case MouseAction::Release:
-    return "release";
-  case MouseAction::MouseWheelUp:
-    return "up";
-  case MouseAction::MouseWheelDown:
-    return "down";
-  case MouseAction::MouseWheelLeft:
-    return "left";
-  case MouseAction::MouseWheelRight:
-    return "right";
-  default:
-    assert(false);
-    return nullptr;
-  }
-}
 
 static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
   auto p = config_node.get_string();
@@ -137,7 +100,8 @@ static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
 //       }
 //       if (redraw_command_name == "grid_clear") {
 //         grid->Clear();
-//         renderer->DrawBackgroundRect(grid->Rows(), grid->Cols(), &grid->hl(0));
+//         renderer->DrawBackgroundRect(grid->Rows(), grid->Cols(),
+//         &grid->hl(0));
 //       } else if (redraw_command_name == "default_colors_set") {
 //         UpdateDefaultColors(redraw_command_arr);
 //       } else if (redraw_command_name == "hl_attr_define") {
@@ -270,8 +234,10 @@ static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
 //     }
 //   }
 
-//   // ["hl_attr_define",[1,{},{},[]],[2,{"foreground":1.38823e+07,"background":1.1119e+07},{"for
-//   void UpdateHighlightAttributes(const msgpackpp::parser &highlight_attribs) {
+//   //
+//   ["hl_attr_define",[1,{},{},[]],[2,{"foreground":1.38823e+07,"background":1.1119e+07},{"for
+//   void UpdateHighlightAttributes(const msgpackpp::parser &highlight_attribs)
+//   {
 //     uint64_t attrib_count = highlight_attribs.count();
 //     for (uint64_t i = 1; i < attrib_count; ++i) {
 //       int64_t attrib_index = highlight_attribs[i][0].get_number<int>();
@@ -351,7 +317,8 @@ static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
 
 //           int wstrlen =
 //               MultiByteToWideChar(CP_UTF8, 0, str.data(), str.size(),
-//                                   &grid->Chars()[offset], grid_size - offset);
+//                                   &grid->Chars()[offset], grid_size -
+//                                   offset);
 //           assert(wstrlen == 1 || wstrlen == 2);
 
 //           if (wstrlen == 1) {
@@ -376,7 +343,8 @@ static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
 //         for (int k = 0; k < repeat; ++k) {
 //           int idx = offset + (k * wstrlen);
 //           wstrlen = MultiByteToWideChar(CP_UTF8, 0, str.data(), str.size(),
-//                                         &grid->Chars()[idx], grid_size - idx);
+//                                         &grid->Chars()[idx], grid_size -
+//                                         idx);
 //         }
 
 //         int wstrlen_with_repetitions = wstrlen * repeat;
@@ -505,6 +473,29 @@ public:
     return guifont;
   }
 
+  void Process() { _context.poll(); }
+
+  void Input(const InputEvent &e) {
+    switch (e.type) {
+    case InputEventTypes::Input:
+      SendInput(e.input);
+      break;
+    case InputEventTypes::ModifiedInput:
+      NvimSendModifiedInput(e.input, true);
+      break;
+    case InputEventTypes::Char:
+      SendChar(e.ch);
+      break;
+    case InputEventTypes::SysChar:
+      SendSysChar(e.ch);
+      break;
+    default:
+      assert(false);
+      break;
+    }
+  }
+
+private:
   void Attach() {
     // RedrawDispatch redraw{
     //     &renderer,
@@ -518,8 +509,6 @@ public:
     //       return {};
     //     });
   }
-
-  void Process() { _context.poll(); }
 
   void SendResize(int grid_rows, int grid_cols) {
     auto msg =
@@ -625,3 +614,5 @@ bool NvimFrontend::Launch(const wchar_t *command) {
 std::string NvimFrontend::Initialize() { return _impl->Initialize(); }
 
 void NvimFrontend::Process() { _impl->Process(); }
+
+void NvimFrontend::Input(const InputEvent &e) { _impl->Input(e); }

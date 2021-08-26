@@ -1,4 +1,5 @@
 #pragma once
+#include "windowevent.h"
 #include <string>
 
 class NvimFrontend {
@@ -13,4 +14,6 @@ public:
   std::string Initialize();
 
   void Process();
+
+  void Input(const InputEvent &e);
 };

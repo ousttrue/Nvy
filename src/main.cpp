@@ -122,16 +122,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   // auto gridSize = GridSize::FromWindowSize(size.width, size.height,
   //                                          fontSize.width, fontSize.height);
 
+  window._on_input = [&nvim](const InputEvent &input) { nvim.Input(input); };
 
-  // window._on_input = [&context](auto input) {
-  //   context.SendInput(input.data());
-  // };
-  // window._on_char = [&context](auto ch) { context.SendChar(ch); };
-  // window._on_sys_char = [&context](auto ch) { context.SendSysChar(ch); };
-  // window._on_toggle_screen = [&context]() { context.ToggleFullscreen(); };
-  // window._on_modified_input = [&context](auto input) {
-  //   context.NvimSendModifiedInput(input.data(), true);
-  // };
   // // mouse drag
   // window._on_mouse_left_drag = [&context](int x, int y) {
   //   auto fontSize = renderer.FontSize();

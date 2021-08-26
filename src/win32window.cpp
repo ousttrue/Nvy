@@ -253,16 +253,16 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     _dead_char_pending = false;
     // Special case for <LT>
     if (wparam == 0x3C) {
-      _on_input("<LT>");
+      _on_input(InputEvent::create_input("<LT>"));
     } else {
-      _on_char(static_cast<wchar_t>(wparam));
+      _on_input(InputEvent::create_char(wparam));
     }
     return 0;
   }
 
   case WM_SYSCHAR: {
     _dead_char_pending = false;
-    _on_sys_char(static_cast<wchar_t>(wparam));
+    _on_input(InputEvent::create_syschar(wparam));
     return 0;
   }
 
@@ -270,7 +270,7 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
   case WM_SYSKEYDOWN: {
     // Special case for <ALT+ENTER> (fullscreen transition)
     if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN) {
-      _on_toggle_screen();
+      ToggleFullscreen();
     } else {
       LONG msg_pos = GetMessagePos();
       POINTS pt = MAKEPOINTS(msg_pos);
@@ -295,7 +295,7 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
       // WM_CHAR
       auto key = GetProcessKey(static_cast<int>(wparam));
       if (key) {
-        _on_modified_input(key);
+        _on_input(InputEvent::create_modified(key));
       } else {
         TranslateMessage(&current_msg);
       }
@@ -307,13 +307,16 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     POINTS cursor_pos = MAKEPOINTS(lparam);
     switch (wparam) {
     case MK_LBUTTON:
-      _on_mouse_left_drag(cursor_pos.x, cursor_pos.y);
+      _on_mouse(
+          {cursor_pos.x, cursor_pos.y, MouseButton::Left, MouseAction::Drag});
       break;
     case MK_MBUTTON:
-      _on_mouse_middle_drag(cursor_pos.x, cursor_pos.y);
+      _on_mouse(
+          {cursor_pos.x, cursor_pos.y, MouseButton::Middle, MouseAction::Drag});
       break;
     case MK_RBUTTON:
-      _on_mouse_right_drag(cursor_pos.x, cursor_pos.y);
+      _on_mouse(
+          {cursor_pos.x, cursor_pos.y, MouseButton::Right, MouseAction::Drag});
       break;
     }
     return 0;
@@ -327,17 +330,23 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
   case WM_MBUTTONUP: {
     POINTS cursor_pos = MAKEPOINTS(lparam);
     if (msg == WM_LBUTTONDOWN) {
-      _on_mouse_left_down(cursor_pos.x, cursor_pos.y);
+      _on_mouse(
+          {cursor_pos.x, cursor_pos.y, MouseButton::Left, MouseAction::Press});
     } else if (msg == WM_MBUTTONDOWN) {
-      _on_mouse_middle_down(cursor_pos.x, cursor_pos.y);
+      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Middle,
+                 MouseAction::Press});
     } else if (msg == WM_RBUTTONDOWN) {
-      _on_mouse_right_down(cursor_pos.x, cursor_pos.y);
+      _on_mouse(
+          {cursor_pos.x, cursor_pos.y, MouseButton::Right, MouseAction::Press});
     } else if (msg == WM_LBUTTONUP) {
-      _on_mouse_left_release(cursor_pos.x, cursor_pos.y);
+      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Left,
+                 MouseAction::Release});
     } else if (msg == WM_MBUTTONUP) {
-      _on_mouse_middle_release(cursor_pos.x, cursor_pos.y);
+      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Middle,
+                 MouseAction::Release});
     } else if (msg == WM_RBUTTONUP) {
-      _on_mouse_right_release(cursor_pos.x, cursor_pos.y);
+      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Right,
+                 MouseAction::Release});
     }
     return 0;
   }

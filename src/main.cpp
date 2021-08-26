@@ -2,7 +2,7 @@
 #include "grid.h"
 #include "hl.h"
 #include "renderer.h"
-#include "mpack_helper.h"
+#include <msgpackpp/msgpackpp.h>
 #include "vec.h"
 #include "window_messages.h"
 #include <dwmapi.h>
@@ -966,99 +966,96 @@ struct Context
         }
     }
 
+    // ["grid_line",[1,50,193,[[" ",1]]],[1,49,193,[["4",218],["%"],[" "],["
+    // ",215,2],["2"],["9"],[":"],["0"]]]]
     void DrawGridLines(const msgpackpp::parser &grid_lines)
     {
-        // int grid_size = _grid.Count();
-        // size_t line_count = mpack_node_array_length(grid_lines);
-        // for (size_t i = 1; i < line_count; ++i)
-        // {
-        //     mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
+        int grid_size = _grid.Count();
+        size_t line_count = grid_lines.count();
+        for (size_t i = 1; i < line_count; ++i)
+        {
+            auto grid_line = grid_lines[i];
 
-        //     int row = MPackIntFromArray(grid_line, 1);
-        //     int col_start = MPackIntFromArray(grid_line, 2);
+            int row = grid_line[1].get_number<int>();
+            int col_start = grid_line[2].get_number<int>();
 
-        //     mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
-        //     size_t cells_array_length = mpack_node_array_length(cells_array);
+            auto cells_array = grid_line[3];
+            size_t cells_array_length = cells_array.count();
 
-        //     int col_offset = col_start;
-        //     int hl_attrib_id = 0;
-        //     for (size_t j = 0; j < cells_array_length; ++j)
-        //     {
+            int col_offset = col_start;
+            int hl_attrib_id = 0;
+            for (size_t j = 0; j < cells_array_length; ++j)
+            {
+                auto cells = cells_array[j];
+                size_t cells_length = cells.count();
 
-        //         mpack_node_t cells = mpack_node_array_at(cells_array, j);
-        //         size_t cells_length = mpack_node_array_length(cells);
+                auto text = cells[0];
+                auto str = text.get_string();
+                // int strlen = static_cast<int>(mpack_node_strlen(text));
+                if (cells_length > 1)
+                {
+                    hl_attrib_id = cells[1].get_number<int>();
+                }
 
-        //         mpack_node_t text = mpack_node_array_at(cells, 0);
-        //         const char *str = mpack_node_str(text);
+                // Right part of double-width char is the empty string, thus
+                // if the next cell array contains the empty string, we can
+                // process the current string as a double-width char and
+                // proceed
+                if (j < (cells_array_length - 1) &&
+                    cells_array[j + 1][0].get_string().size() == 0)
+                {
+                    int offset = row * _grid.Cols() + col_offset;
+                    _grid.Props()[offset].is_wide_char = true;
+                    _grid.Props()[offset].hl_attrib_id = hl_attrib_id;
+                    _grid.Props()[offset + 1].hl_attrib_id = hl_attrib_id;
 
-        //         int strlen = static_cast<int>(mpack_node_strlen(text));
+                    int wstrlen = MultiByteToWideChar(
+                        CP_UTF8, 0, str.data(), str.size(),
+                        &_grid.Chars()[offset], grid_size - offset);
+                    assert(wstrlen == 1 || wstrlen == 2);
 
-        //         if (cells_length > 1)
-        //         {
-        //             hl_attrib_id = MPackIntFromArray(cells, 1);
-        //         }
+                    if (wstrlen == 1)
+                    {
+                        _grid.Chars()[offset + 1] = L'\0';
+                    }
 
-        //         // Right part of double-width char is the empty string, thus
-        //         // if the next cell array contains the empty string, we can
-        //         // process the current string as a double-width char and
-        //         proceed if (j < (cells_array_length - 1) &&
-        //             mpack_node_strlen(mpack_node_array_at(
-        //                 mpack_node_array_at(cells_array, j + 1), 0)) == 0)
-        //         {
+                    col_offset += 2;
+                    continue;
+                }
 
-        //             int offset = row * _grid.Cols() + col_offset;
-        //             _grid.Props()[offset].is_wide_char = true;
-        //             _grid.Props()[offset].hl_attrib_id = hl_attrib_id;
-        //             _grid.Props()[offset + 1].hl_attrib_id = hl_attrib_id;
+                if (strlen == 0)
+                {
+                    continue;
+                }
 
-        //             int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str,
-        //             strlen,
-        //                                               &_grid.Chars()[offset],
-        //                                               grid_size - offset);
-        //             assert(wstrlen == 1 || wstrlen == 2);
+                int repeat = 1;
+                if (cells_length > 2)
+                {
+                    repeat = cells[2].get_number<int>();
+                }
 
-        //             if (wstrlen == 1)
-        //             {
-        //                 _grid.Chars()[offset + 1] = L'\0';
-        //             }
+                int offset = row * _grid.Cols() + col_offset;
+                int wstrlen = 0;
+                for (int k = 0; k < repeat; ++k)
+                {
+                    int idx = offset + (k * wstrlen);
+                    wstrlen = MultiByteToWideChar(
+                        CP_UTF8, 0, str.data(), str.size(), &_grid.Chars()[idx],
+                        grid_size - idx);
+                }
 
-        //             col_offset += 2;
-        //             continue;
-        //         }
+                int wstrlen_with_repetitions = wstrlen * repeat;
+                for (int k = 0; k < wstrlen_with_repetitions; ++k)
+                {
+                    _grid.Props()[offset + k].hl_attrib_id = hl_attrib_id;
+                    _grid.Props()[offset + k].is_wide_char = false;
+                }
 
-        //         if (strlen == 0)
-        //         {
-        //             continue;
-        //         }
+                col_offset += wstrlen_with_repetitions;
+            }
 
-        //         int repeat = 1;
-        //         if (cells_length > 2)
-        //         {
-        //             repeat = MPackIntFromArray(cells, 2);
-        //         }
-
-        //         int offset = row * _grid.Cols() + col_offset;
-        //         int wstrlen = 0;
-        //         for (int k = 0; k < repeat; ++k)
-        //         {
-        //             int idx = offset + (k * wstrlen);
-        //             wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen,
-        //                                           &_grid.Chars()[idx],
-        //                                           grid_size - idx);
-        //         }
-
-        //         int wstrlen_with_repetitions = wstrlen * repeat;
-        //         for (int k = 0; k < wstrlen_with_repetitions; ++k)
-        //         {
-        //             _grid.Props()[offset + k].hl_attrib_id = hl_attrib_id;
-        //             _grid.Props()[offset + k].is_wide_char = false;
-        //         }
-
-        //         col_offset += wstrlen_with_repetitions;
-        //     }
-
-        //     renderer->DrawGridLine(&_grid, row);
-        // }
+            renderer->DrawGridLine(&_grid, row);
+        }
     }
 
     void ScrollRegion(const msgpackpp::parser &scroll_region)

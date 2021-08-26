@@ -7,6 +7,7 @@ target_sources(Nvy PUBLIC
 "nvim_pipe.cpp"
 "renderer.cpp"
 "grid.cpp"
+"win32window.cpp"
 )
 
 target_link_libraries(Nvy PUBLIC 

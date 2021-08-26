@@ -475,27 +475,6 @@ public:
 
   void Process() { _context.poll(); }
 
-  void Input(const InputEvent &e) {
-    switch (e.type) {
-    case InputEventTypes::Input:
-      SendInput(e.input);
-      break;
-    case InputEventTypes::ModifiedInput:
-      NvimSendModifiedInput(e.input, true);
-      break;
-    case InputEventTypes::Char:
-      SendChar(e.ch);
-      break;
-    case InputEventTypes::SysChar:
-      SendSysChar(e.ch);
-      break;
-    default:
-      assert(false);
-      break;
-    }
-  }
-
-private:
   void Attach() {
     // RedrawDispatch redraw{
     //     &renderer,
@@ -604,15 +583,31 @@ private:
 };
 
 NvimFrontend::NvimFrontend() : _impl(new NvimFrontendImpl) {}
-
 NvimFrontend::~NvimFrontend() { delete _impl; }
-
 bool NvimFrontend::Launch(const wchar_t *command) {
   return _impl->Launch(command);
 }
-
 std::string NvimFrontend::Initialize() { return _impl->Initialize(); }
-
 void NvimFrontend::Process() { _impl->Process(); }
-
-void NvimFrontend::Input(const InputEvent &e) { _impl->Input(e); }
+void NvimFrontend::Input(const InputEvent &e) {
+  switch (e.type) {
+  case InputEventTypes::Input:
+    _impl->SendInput(e.input);
+    break;
+  case InputEventTypes::ModifiedInput:
+    _impl->NvimSendModifiedInput(e.input, true);
+    break;
+  case InputEventTypes::Char:
+    _impl->SendChar(e.ch);
+    break;
+  case InputEventTypes::SysChar:
+    _impl->SendSysChar(e.ch);
+    break;
+  default:
+    assert(false);
+    break;
+  }
+}
+void NvimFrontend::Mouse(const MouseEvent &e) {
+  _impl->SendMouseInput(e.button, e.action, e.y, e.x);
+}

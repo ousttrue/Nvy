@@ -14,6 +14,6 @@ public:
   std::string Initialize();
 
   void Process();
-
   void Input(const InputEvent &e);
+  void Mouse(const MouseEvent &e);
 };

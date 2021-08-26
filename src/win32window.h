@@ -20,21 +20,6 @@ public:
   on_input_t _on_input;
   on_mouse_t _on_mouse;
 
-  // on_input_t _on_input;
-  // on_char_t _on_char;
-  // on_char_t _on_sys_char;
-  // on_void_t _on_toggle_screen;
-  // on_input_t _on_modified_input;
-  // on_int2_t _on_mouse_left_drag;
-  // on_int2_t _on_mouse_middle_drag;
-  // on_int2_t _on_mouse_right_drag;
-  // on_int2_t _on_mouse_left_down;
-  // on_int2_t _on_mouse_left_release;
-  // on_int2_t _on_mouse_middle_down;
-  // on_int2_t _on_mouse_middle_release;
-  // on_int2_t _on_mouse_right_down;
-  // on_int2_t _on_mouse_right_release;
-
   void *Create(void *instance, const wchar_t *class_name,
                const wchar_t *window_title);
 

@@ -1,13 +1,8 @@
 #include "grid.h"
 #include "nvim_frontend.h"
 #include "renderer.h"
-#include "vec.h"
 #include "win32window.h"
-#include "window_messages.h"
 #include <Windows.h>
-#include <msgpackpp/msgpackpp.h>
-#include <msgpackpp/rpc.h>
-#include <msgpackpp/windows_pipe_transport.h>
 #include <plog/Appenders/DebugOutputAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Init.h>
@@ -123,83 +118,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   //                                          fontSize.width, fontSize.height);
 
   window._on_input = [&nvim](const InputEvent &input) { nvim.Input(input); };
-
-  // // mouse drag
-  // window._on_mouse_left_drag = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto grid_pos =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   if (context.cached_cursor_grid_pos.col != grid_pos.col ||
-  //       context.cached_cursor_grid_pos.row != grid_pos.row) {
-  //     context.SendMouseInput(MouseButton::Left, MouseAction::Drag,
-  //     grid_pos.row,
-  //                            grid_pos.col);
-  //     context.cached_cursor_grid_pos = grid_pos;
-  //   }
-  // };
-  // window._on_mouse_middle_drag = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto grid_pos =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   if (context.cached_cursor_grid_pos.col != grid_pos.col ||
-  //       context.cached_cursor_grid_pos.row != grid_pos.row) {
-  //     context.SendMouseInput(MouseButton::Middle, MouseAction::Drag,
-  //                            grid_pos.row, grid_pos.col);
-  //     context.cached_cursor_grid_pos = grid_pos;
-  //   }
-  // };
-  // window._on_mouse_right_drag = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto grid_pos =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   if (context.cached_cursor_grid_pos.col != grid_pos.col ||
-  //       context.cached_cursor_grid_pos.row != grid_pos.row) {
-  //     context.SendMouseInput(MouseButton::Right, MouseAction::Drag,
-  //                            grid_pos.row, grid_pos.col);
-  //     context.cached_cursor_grid_pos = grid_pos;
-  //   }
-  // };
-  // // mouse button
-  // window._on_mouse_left_down = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto [row, col] =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   context.SendMouseInput(MouseButton::Left, MouseAction::Press, row, col);
-  // };
-  // window._on_mouse_middle_down = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto [row, col] =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   context.SendMouseInput(MouseButton::Middle, MouseAction::Press, row,
-  //   col);
-  // };
-  // window._on_mouse_right_down = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto [row, col] =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   context.SendMouseInput(MouseButton::Right, MouseAction::Press, row, col);
-  // };
-  // window._on_mouse_left_release = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto [row, col] =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   context.SendMouseInput(MouseButton::Left, MouseAction::Release, row,
-  //   col);
-  // };
-  // window._on_mouse_middle_release = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto [row, col] =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   context.SendMouseInput(MouseButton::Middle, MouseAction::Release, row,
-  //   col);
-  // };
-  // window._on_mouse_right_release = [&context](int x, int y) {
-  //   auto fontSize = renderer.FontSize();
-  //   auto [row, col] =
-  //       GridPoint::FromCursor(x, y, fontSize.width, fontSize.height);
-  //   context.SendMouseInput(MouseButton::Right, MouseAction::Release, row,
-  //   col);
-  // };
+  window._on_mouse = [&nvim, &renderer](const MouseEvent &mouse) {
+    auto fontSize = renderer.FontSize();
+    auto grid_pos = GridPoint::FromCursor(mouse.x, mouse.y, fontSize.width,
+                                          fontSize.height);
+    auto copy = mouse;
+    copy.x = grid_pos.col;
+    copy.y = grid_pos.row;
+    nvim.Mouse(copy);
+  };
 
   while (window.Loop()) {
     nvim.Process();

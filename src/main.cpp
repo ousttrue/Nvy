@@ -90,7 +90,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   // };
 
   NvimFrontend nvim;
-  if (!nvim.Launch(cmd.nvim_command_line)) {
+  if (!nvim.Launch(cmd.nvim_command_line,
+                   [hwnd]() { PostMessage(hwnd, WM_CLOSE, 0, 0); })) {
     return 3;
   }
   grid.OnSizeChanged(

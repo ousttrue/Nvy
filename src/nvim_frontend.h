@@ -7,7 +7,7 @@ namespace msgpackpp {
 class parser;
 }
 using on_redraw_t = std::function<void(const msgpackpp::parser &)>;
-
+using on_terminated_t = std::function<void()>;
 class NvimFrontend {
   class NvimFrontendImpl *_impl = nullptr;
 
@@ -15,7 +15,7 @@ public:
   NvimFrontend();
   ~NvimFrontend();
   // nvim --embed
-  bool Launch(const wchar_t *command);
+  bool Launch(const wchar_t *command, const on_terminated_t &callback);
   // return guifont
   std::string Initialize();
 

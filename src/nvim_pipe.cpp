@@ -23,10 +23,6 @@ NvimPipe::~NvimPipe() {
   GetExitCodeProcess(_process_info.hProcess, &exit_code);
 
   if (exit_code == STILL_ACTIVE) {
-    if (_watch.joinable()) {
-      _watch.join();
-    }
-
     CloseHandle(_stdin_read);
     CloseHandle(_stdin_write);
     CloseHandle(_stdout_read);
@@ -36,9 +32,14 @@ NvimPipe::~NvimPipe() {
     WaitForSingleObject(_process_info.hProcess, INFINITE);
     CloseHandle(_process_info.hProcess);
   }
+
+  if (_watch.joinable()) {
+    _watch.join();
+  }
 }
 
-bool NvimPipe::Launch(const wchar_t *command_line) {
+bool NvimPipe::Launch(const wchar_t *command_line,
+                      const on_terminated_t &callback) {
   SECURITY_ATTRIBUTES sec_attribs{.nLength = sizeof(SECURITY_ATTRIBUTES),
                                   .bInheritHandle = true};
   if (!CreatePipe(&_stdin_read, &_stdin_write, &sec_attribs, 0)) {
@@ -60,10 +61,10 @@ bool NvimPipe::Launch(const wchar_t *command_line) {
                       &startup_info, &_process_info)) {
     return false;
   }
-  _watch = std::thread([]() {
+  _watch = std::thread([callback]() {
     WaitForSingleObject(_process_info.hProcess, INFINITE);
-    CancelSynchronousIo(_stdout_read);
-    CloseHandle(_process_info.hProcess);
+    callback();
+    PLOGD << "nvim terminated";
   });
 
   HANDLE job_object = CreateJobObjectW(nullptr, nullptr);

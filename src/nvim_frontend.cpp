@@ -77,6 +77,21 @@ static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
   return guifont_out;
 }
 
+struct Sync {
+  asio::io_context &_context;
+  asio::io_context::work _work;
+  std::thread _t;
+  Sync(asio::io_context &context)
+      : _context(context), _work(context), _t([&context]() { context.run(); }) {
+  }
+  ~Sync() {
+    _context.stop();
+    _t.join();
+  }
+  Sync(const Sync &) = delete;
+  Sync &operator=(const Sync &) = delete;
+};
+
 class NvimFrontendImpl {
   NvimPipe _pipe;
   asio::io_context _context;
@@ -89,11 +104,9 @@ public:
   std::string Initialize() {
     std::string guifont;
     {
-      // synchronous
-      asio::io_context::work work(_context);
-      std::thread t([self = this]() { self->_context.run(); });
       _rpc.attach(msgpackpp::WindowsPipeTransport(_context, _pipe.ReadHandle(),
                                                   _pipe.WriteHandle()));
+      Sync sync(_context);
 
       {
         auto result = _rpc.request_async("nvim_get_api_info").get();
@@ -133,9 +146,6 @@ public:
                                                      args.get_payload());
         _rpc.write_async(msg);
       }
-
-      _context.stop();
-      t.join();
     }
 
     _rpc.add_proc(

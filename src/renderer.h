@@ -2,6 +2,7 @@
 #include "cursor.h"
 #include <d2d1_3.h>
 #include <dwrite_3.h>
+#include <functional>
 #include <memory>
 #include <wrl/client.h>
 
@@ -17,6 +18,7 @@ constexpr int MAX_FONT_LENGTH = 128;
 constexpr float DEFAULT_DPI = 96.0f;
 constexpr float POINTS_PER_INCH = 72.0f;
 
+using on_rows_cols_t = std::function<void(int, int)>;
 struct HighlightAttribute;
 class Grid;
 class Renderer {
@@ -47,6 +49,8 @@ public:
   PixelSize GridToPixelSize(int rows, int cols);
   D2D1_SIZE_U SetDpiScale(float current_dpi);
   D2D1_SIZE_U ResizeFont(float size);
+  void OnRowsCols(const on_rows_cols_t &callback);
+  // draw
   HRESULT
   DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
                DWRITE_MEASURING_MODE measuring_mode,

@@ -1,0 +1,3 @@
+[submodule "third_party/msgpackpp/msgpackpp"]
+	path = third_party/msgpackpp/msgpackpp
+	url = https://github.com/ousttrue/msgpackpp.git

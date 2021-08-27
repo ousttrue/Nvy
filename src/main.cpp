@@ -1,5 +1,6 @@
 #include "grid.h"
 #include "nvim_frontend.h"
+#include "nvim_redraw.h"
 #include "renderer.h"
 #include "win32window.h"
 #include <Windows.h>
@@ -93,6 +94,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   if (!nvim.Launch(cmd.nvim_command_line)) {
     return 3;
   }
+
+  NvimRedraw redraw;
+  nvim.OnRedraw([&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
+    redraw.Dispatch(&grid, &renderer, msg);
+  });
 
   // setfont
   auto guifont_buffer = nvim.Initialize();

@@ -95,11 +95,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     return 3;
   }
 
-  NvimRedraw redraw;
-  nvim.OnRedraw([&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
-    redraw.Dispatch(&grid, &renderer, msg);
-  });
-
   // setfont
   auto guifont_buffer = nvim.Initialize();
   if (!guifont_buffer.empty()) {
@@ -133,6 +128,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     copy.y = grid_pos.row;
     nvim.Mouse(copy);
   };
+
+  NvimRedraw redraw;
+  nvim.AttachUI([&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
+    redraw.Dispatch(&grid, &renderer, msg);
+  });
 
   while (window.Loop()) {
     nvim.Process();

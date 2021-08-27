@@ -99,63 +99,63 @@ class NvimFrontendImpl {
 
 public:
   bool Launch(const wchar_t *command) { return _pipe.Launch(command); }
-  on_redraw_t _on_redraw;
 
   std::string Initialize() {
-    std::string guifont;
+
+    _rpc.attach(msgpackpp::WindowsPipeTransport(_context, _pipe.ReadHandle(),
+                                                _pipe.WriteHandle()));
+    Sync sync(_context);
+
     {
-      _rpc.attach(msgpackpp::WindowsPipeTransport(_context, _pipe.ReadHandle(),
-                                                  _pipe.WriteHandle()));
-      Sync sync(_context);
-
-      {
-        auto result = _rpc.request_async("nvim_get_api_info").get();
-        // TODO:
-        // mpack_node_t top_level_map =
-        //     mpack_node_array_at(result.params, 1);
-        // mpack_node_t version_map =
-        //     mpack_node_map_value_at(top_level_map, 0);
-        // int64_t api_level =
-        //     mpack_node_map_cstr(version_map, "api_level")
-        //         .data->value.i;
-        // assert(api_level > 6);
-      }
-
-      { _rpc.notify("nvim_set_var", "nvy", 1); }
-
-      {
-        auto result =
-            _rpc.request_async("nvim_eval", "stdpath('config')").get();
-
-        msgpackpp::parser msg(result);
-        auto f = ParseConfig(msg);
-        if (!f.empty()) {
-          guifont = std::string(f.data());
-        }
-      }
-
-      {
-        // Send UI attach notification
-        msgpackpp::packer args;
-        args.pack_array(3);
-        args << 190;
-        args << 45;
-        args.pack_map(1);
-        args << "ext_linegrid" << true;
-        auto msg = msgpackpp::make_rpc_notify_packed("nvim_ui_attach",
-                                                     args.get_payload());
-        _rpc.write_async(msg);
-      }
+      auto result = _rpc.request_async("nvim_get_api_info").get();
+      // TODO:
+      // mpack_node_t top_level_map =
+      //     mpack_node_array_at(result.params, 1);
+      // mpack_node_t version_map =
+      //     mpack_node_map_value_at(top_level_map, 0);
+      // int64_t api_level =
+      //     mpack_node_map_cstr(version_map, "api_level")
+      //         .data->value.i;
+      // assert(api_level > 6);
     }
 
+    { _rpc.notify("nvim_set_var", "nvy", 1); }
+
+    std::string guifont;
+    {
+      auto result = _rpc.request_async("nvim_eval", "stdpath('config')").get();
+
+      msgpackpp::parser msg(result);
+      auto f = ParseConfig(msg);
+      if (!f.empty()) {
+        guifont = std::string(f.data());
+      }
+    }
+    return guifont;
+  }
+
+  void AttachUI(const on_redraw_t &callback) {
     _rpc.add_proc(
         "redraw",
-        [self = this](const msgpackpp::parser &msg) -> std::vector<uint8_t> {
-          self->_on_redraw(msg);
+        [callback](const msgpackpp::parser &msg) -> std::vector<uint8_t> {
+          callback(msg);
           return {};
         });
 
-    return guifont;
+    Sync sync(_context);
+
+    {
+      // Send UI attach notification
+      msgpackpp::packer args;
+      args.pack_array(3);
+      args << 190;
+      args << 45;
+      args.pack_map(1);
+      args << "ext_linegrid" << true;
+      auto msg = msgpackpp::make_rpc_notify_packed("nvim_ui_attach",
+                                                   args.get_payload());
+      _rpc.write_async(msg);
+    }
   }
 
   void Process() { _context.poll(); }
@@ -254,8 +254,8 @@ NvimFrontend::~NvimFrontend() { delete _impl; }
 bool NvimFrontend::Launch(const wchar_t *command) {
   return _impl->Launch(command);
 }
-void NvimFrontend::OnRedraw(const on_redraw_t &callback) {
-  _impl->_on_redraw = callback;
+void NvimFrontend::AttachUI(const on_redraw_t &callback) {
+  _impl->AttachUI(callback);
 }
 
 std::string NvimFrontend::Initialize() { return _impl->Initialize(); }

@@ -20,7 +20,7 @@ public:
   // return guifont
   std::string Initialize();
 
-  void OnRedraw(const on_redraw_t &callback);
+  void AttachUI(const on_redraw_t &callback);
 
   void Process();
   void Input(const InputEvent &e);

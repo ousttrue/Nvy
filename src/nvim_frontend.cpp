@@ -134,7 +134,7 @@ public:
     return guifont;
   }
 
-  void AttachUI(const on_redraw_t &callback) {
+  void AttachUI(const on_redraw_t &callback, int rows, int cols) {
     _rpc.add_proc(
         "redraw",
         [callback](const msgpackpp::parser &msg) -> std::vector<uint8_t> {
@@ -148,8 +148,8 @@ public:
       // Send UI attach notification
       msgpackpp::packer args;
       args.pack_array(3);
-      args << 190;
-      args << 45;
+      args << cols;
+      args << rows;
       args.pack_map(1);
       args << "ext_linegrid" << true;
       auto msg = msgpackpp::make_rpc_notify_packed("nvim_ui_attach",
@@ -254,8 +254,11 @@ NvimFrontend::~NvimFrontend() { delete _impl; }
 bool NvimFrontend::Launch(const wchar_t *command) {
   return _impl->Launch(command);
 }
-void NvimFrontend::AttachUI(const on_redraw_t &callback) {
-  _impl->AttachUI(callback);
+void NvimFrontend::AttachUI(const on_redraw_t &callback, int rows, int cols) {
+  _impl->AttachUI(callback, rows, cols);
+}
+void NvimFrontend::ResizeGrid(int rows, int cols) {
+  _impl->SendResize(rows, cols);
 }
 
 std::string NvimFrontend::Initialize() { return _impl->Initialize(); }

@@ -6,8 +6,7 @@
 namespace msgpackpp {
 class parser;
 }
-using on_redraw_t =
-    std::function<void(const msgpackpp::parser &)>;
+using on_redraw_t = std::function<void(const msgpackpp::parser &)>;
 
 class NvimFrontend {
   class NvimFrontendImpl *_impl = nullptr;
@@ -20,7 +19,8 @@ public:
   // return guifont
   std::string Initialize();
 
-  void AttachUI(const on_redraw_t &callback);
+  void AttachUI(const on_redraw_t &callback, int rows, int cols);
+  void ResizeGrid(int rows, int cols);
 
   void Process();
   void Input(const InputEvent &e);

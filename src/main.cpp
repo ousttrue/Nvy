@@ -82,10 +82,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   }
 
   Grid grid;
-  // context._grid.OnSizeChanged([&context](const GridSize &size) {
-  //   context.SendResize(size.rows, size.cols);
-  // });
-
   Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
                     &grid.hl(0));
   window._on_resize = [&renderer](int w, int h) { renderer.Resize(w, h); };
@@ -94,6 +90,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   if (!nvim.Launch(cmd.nvim_command_line)) {
     return 3;
   }
+  grid.OnSizeChanged(
+      [&nvim](const GridSize &size) { nvim.ResizeGrid(size.rows, size.cols); });
 
   // setfont
   auto guifont_buffer = nvim.Initialize();
@@ -108,15 +106,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     PixelSize start_size = renderer.GridToPixelSize(cmd.rows, cmd.cols);
     window.Resize(start_size.width, start_size.height);
   }
+  UpdateWindow(hwnd);
   ShowWindow(hwnd, SW_SHOWDEFAULT);
-
-  // Attach the renderer now that the window size is
-  // determined
-  renderer.Attach();
-  // auto size = renderer.Size();
-  // auto fontSize = renderer.FontSize();
-  // auto gridSize = GridSize::FromWindowSize(size.width, size.height,
-  //                                          fontSize.width, fontSize.height);
 
   window._on_input = [&nvim](const InputEvent &input) { nvim.Input(input); };
   window._on_mouse = [&nvim, &renderer](const MouseEvent &mouse) {
@@ -129,10 +120,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     nvim.Mouse(copy);
   };
 
+  // Attach the renderer now that the window size is
+  // determined
+  renderer.Attach();
+  auto size = renderer.Size();
+  auto fontSize = renderer.FontSize();
+  auto gridSize = GridSize::FromWindowSize(size.width, size.height,
+                                           fontSize.width, fontSize.height);
   NvimRedraw redraw;
-  nvim.AttachUI([&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
-    redraw.Dispatch(&grid, &renderer, msg);
-  });
+  nvim.AttachUI(
+      [&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
+        redraw.Dispatch(&grid, &renderer, msg);
+      },
+      gridSize.rows, gridSize.cols);
 
   while (window.Loop()) {
     nvim.Process();

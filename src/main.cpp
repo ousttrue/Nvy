@@ -84,7 +84,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   Grid grid;
   Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
                     &grid.hl(0));
-  window._on_resize = [&renderer](int w, int h) { renderer.Resize(w, h); };
+  // window._on_resize = [&renderer](int w, int h) {
+  //   PLOGD << "window: [" << w << ", " << h << "]";
+  //   renderer.Resize(w, h);
+  // };
 
   NvimFrontend nvim;
   if (!nvim.Launch(cmd.nvim_command_line)) {
@@ -92,6 +95,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   }
   grid.OnSizeChanged(
       [&nvim](const GridSize &size) { nvim.ResizeGrid(size.rows, size.cols); });
+  renderer.OnRowsCols([&grid](int rows, int cols) {
+    PLOGD << "renderer: [" << cols << ", " << rows << "]";
+    grid.RowsCols(rows, cols);
+  });
 
   // setfont
   auto guifont_buffer = nvim.Initialize();
@@ -122,11 +129,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
   // Attach the renderer now that the window size is
   // determined
-  renderer.Attach();
+  auto [w, h] = window.Size();
+  renderer.Resize(w, h);
   auto size = renderer.Size();
   auto fontSize = renderer.FontSize();
   auto gridSize = GridSize::FromWindowSize(size.width, size.height,
                                            fontSize.width, fontSize.height);
+
   NvimRedraw redraw;
   nvim.AttachUI(
       [&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
@@ -135,6 +144,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
       gridSize.rows, gridSize.cols);
 
   while (window.Loop()) {
+    auto [w, h] = window.Size();
+    renderer.Resize(w, h);
     nvim.Process();
   }
 

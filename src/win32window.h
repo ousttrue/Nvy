@@ -28,4 +28,5 @@ public:
   bool Loop();
   void ToggleFullscreen();
   void Resize(int w, int h);
+  std::tuple<int, int> Size() const;
 };

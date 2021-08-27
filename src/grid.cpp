@@ -9,7 +9,8 @@ Grid::Grid() {
 
 Grid::~Grid() {}
 
-void Grid::Resize(const GridSize &size) {
+void Grid::RowsCols(int rows, int cols) {
+  GridSize size{rows, cols};
   if (size != _size) {
     _size = size;
 

@@ -77,19 +77,19 @@ static std::vector<char> ParseConfig(const msgpackpp::parser &config_node) {
   return guifont_out;
 }
 
-struct Sync {
+struct ThreadWork {
   asio::io_context &_context;
   asio::io_context::work _work;
   std::thread _t;
-  Sync(asio::io_context &context)
+  ThreadWork(asio::io_context &context)
       : _context(context), _work(context), _t([&context]() { context.run(); }) {
   }
-  ~Sync() {
+  ~ThreadWork() {
     _context.stop();
     _t.join();
   }
-  Sync(const Sync &) = delete;
-  Sync &operator=(const Sync &) = delete;
+  ThreadWork(const ThreadWork &) = delete;
+  ThreadWork &operator=(const ThreadWork &) = delete;
 };
 
 class NvimFrontendImpl {
@@ -102,9 +102,14 @@ public:
 
   std::string Initialize() {
 
+    _rpc.set_on_send([](auto data) {
+      msgpackpp::parser msg(data);
+      PLOGD << msg;
+    });
+
     _rpc.attach(msgpackpp::WindowsPipeTransport(_context, _pipe.ReadHandle(),
                                                 _pipe.WriteHandle()));
-    Sync sync(_context);
+    ThreadWork sync(_context);
 
     {
       auto result = _rpc.request_async("nvim_get_api_info").get();
@@ -142,7 +147,7 @@ public:
           return {};
         });
 
-    Sync sync(_context);
+    ThreadWork sync(_context);
 
     {
       // Send UI attach notification

@@ -64,7 +64,7 @@ public:
   const wchar_t *Chars() const { return _grid_chars.data(); }
   CellProperty *Props() { return _grid_cell_properties.data(); }
   const CellProperty *Props() const { return _grid_cell_properties.data(); }
-  void Resize(const GridSize &size);
+  void RowsCols(int rows, int cols);
   void LineCopy(int left, int right, int src_row, int dst_row);
   void Clear();
 

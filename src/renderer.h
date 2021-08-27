@@ -1,5 +1,6 @@
 #pragma once
 #include "cursor.h"
+#include "grid.h"
 #include <d2d1_3.h>
 #include <dwrite_3.h>
 #include <functional>
@@ -27,21 +28,24 @@ class Renderer {
   std::unique_ptr<class DWriteImpl> _dwrite;
   Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
-  D2D1_SIZE_U _pixel_size = {0};
-
   HWND _hwnd = nullptr;
   bool _draw_active = false;
 
   const HighlightAttribute *_defaultHL = nullptr;
+
+  D2D1_SIZE_U _pixel_size = {0};
+  GridSize _grid_size = {};
+  on_rows_cols_t _on_rows_cols;
 
 public:
   Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
            const HighlightAttribute *defaultHL);
   ~Renderer();
   // backbuffer
+  // void Attach();
   D2D1_SIZE_U Size() const { return _pixel_size; }
-  void Attach();
   void Resize(uint32_t width, uint32_t height);
+  void UpdateSize();
   // font
   D2D1_SIZE_U FontSize() const;
   void UpdateGuiFont(const char *guifont, size_t strlen);
@@ -50,6 +54,7 @@ public:
   D2D1_SIZE_U SetDpiScale(float current_dpi);
   D2D1_SIZE_U ResizeFont(float size);
   void OnRowsCols(const on_rows_cols_t &callback);
+  void SetGridSize(int rows, int cols);
   // draw
   HRESULT
   DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,

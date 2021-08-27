@@ -489,3 +489,11 @@ void Win32Window::Resize(int w, int h) {
   GetClientRect(hwnd, &client_rect);
   MoveWindow(hwnd, client_rect.left, client_rect.top, w, h, false);
 }
+
+std::tuple<int, int> Win32Window::Size() const {
+  RECT client_rect;
+  auto hwnd = (HWND)_hwnd;
+  GetClientRect(hwnd, &client_rect);
+  return {client_rect.right - client_rect.left,
+          client_rect.bottom - client_rect.top};
+}

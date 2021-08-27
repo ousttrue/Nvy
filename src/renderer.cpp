@@ -582,18 +582,36 @@ void Renderer::HandleDeviceLost() {
                    static_cast<int>(strlen(DEFAULT_FONT)));
 }
 
-void Renderer::Attach() {
-  RECT client_rect;
-  GetClientRect(this->_hwnd, &client_rect);
-  _pixel_size.width =
-      static_cast<uint32_t>(client_rect.right - client_rect.left);
-  _pixel_size.height =
-      static_cast<uint32_t>(client_rect.bottom - client_rect.top);
-}
+// GridSize Renderer::Attach() {
+//   RECT client_rect;
+//   GetClientRect(this->_hwnd, &client_rect);
+//   auto w = static_cast<uint32_t>(client_rect.right - client_rect.left);
+//   auto h = static_cast<uint32_t>(client_rect.bottom - client_rect.top);
+//   auto fontSize = renderer.FontSize();
+//   auto gridSize =
+//       GridSize::FromWindowSize(w, h, fontSize.width, fontSize.height);
+// }
 
 void Renderer::Resize(uint32_t width, uint32_t height) {
   _pixel_size.width = width;
   _pixel_size.height = height;
+  UpdateSize();
+}
+
+void Renderer::UpdateSize() {
+  auto fontSize = FontSize();
+  auto gridSize = GridSize::FromWindowSize(
+      _pixel_size.width, _pixel_size.height, fontSize.width, fontSize.height);
+  SetGridSize(gridSize.rows, gridSize.cols);
+}
+
+void Renderer::SetGridSize(int rows, int cols) {
+  if (rows == _grid_size.rows && cols == _grid_size.cols) {
+    return;
+  }
+  _grid_size.rows = rows;
+  _grid_size.cols = cols;
+  _on_rows_cols(_grid_size.rows, _grid_size.cols);
 }
 
 void Renderer::ApplyHighlightAttributes(IDWriteTextLayout *text_layout,
@@ -874,6 +892,10 @@ D2D1_SIZE_U Renderer::ResizeFont(float size) {
   return FontSize();
 }
 
+void Renderer::OnRowsCols(const on_rows_cols_t &callback) {
+  _on_rows_cols = callback;
+}
+
 HRESULT Renderer::DrawGlyphRun(
     float baseline_origin_x, float baseline_origin_y,
     DWRITE_MEASURING_MODE measuring_mode, DWRITE_GLYPH_RUN const *glyph_run,
@@ -1009,4 +1031,5 @@ HRESULT Renderer::GetCurrentTransform(DWRITE_MATRIX *transform) {
 void Renderer::UpdateFont(float font_size, const char *font_string,
                           int strlen) {
   _dwrite->UpdateFont(font_size, font_string, strlen);
+  UpdateSize();
 }

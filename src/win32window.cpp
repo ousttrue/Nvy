@@ -3,7 +3,7 @@
 
 WINDOWPLACEMENT saved_window_placement = {.length = sizeof(WINDOWPLACEMENT)};
 
-static const char *GetProcessKey(int virtual_key) {
+static const char *VK_to_key(int virtual_key) {
   switch (virtual_key) {
   case VK_BACK:
     return "BS";
@@ -113,6 +113,9 @@ static const char *GetProcessKey(int virtual_key) {
     return "F23";
   case VK_F24:
     return "F24";
+  case VK_OEM_2:
+    // C-/
+    return "_";
   }
 
   return nullptr;
@@ -293,7 +296,7 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
 
       // If none of the special keys were hit, process in
       // WM_CHAR
-      auto key = GetProcessKey(static_cast<int>(wparam));
+      auto key = VK_to_key(static_cast<int>(wparam));
       if (key) {
         _on_input(InputEvent::create_modified(key));
       } else {

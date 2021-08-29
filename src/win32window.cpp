@@ -114,8 +114,10 @@ static const char *VK_to_key(int virtual_key) {
   case VK_F24:
     return "F24";
   case VK_OEM_2:
-    // C-/
-    return "_";
+    if (GetKeyState(VK_CONTROL) < 0) {
+      // C-/
+      return "/";
+    }
   }
 
   return nullptr;

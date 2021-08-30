@@ -1,23 +1,27 @@
 #pragma once
-#include <d2d1_3.h>
 #include <functional>
+#include <stdint.h>
 
 using on_rows_cols_t = std::function<void(int, int)>;
+
+struct PixelSize {
+  uint32_t width;
+  uint32_t height;
+};
 struct HighlightAttribute;
 class NvimGrid;
 class Renderer {
   class RendererImpl *_impl = nullptr;
 
 public:
-  Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
+  Renderer(void *hwnd, bool disable_ligatures, float linespace_factor,
            const HighlightAttribute *defaultHL);
   ~Renderer();
   // window
-  D2D1_SIZE_U Size() const;
+  PixelSize Size() const;
   void Resize(uint32_t width, uint32_t height);
-  D2D1_SIZE_U FontSize() const;
+  PixelSize FontSize() const;
   void UpdateGuiFont(const char *guifont, size_t strlen);
-  D2D1_SIZE_U GridToPixelSize(int rows, int cols);
   void OnRowsCols(const on_rows_cols_t &callback);
   // render
   void DrawBackgroundRect(int rows, int cols, const HighlightAttribute *hl);

@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "dx_helper.h"
 #include "nvim_grid.h"
+#include <d2d1_3.h>
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
@@ -525,7 +526,7 @@ class RendererImpl {
 
   const HighlightAttribute *_defaultHL = nullptr;
 
-  D2D1_SIZE_U _pixel_size = {0};
+  PixelSize _pixel_size = {0};
   GridSize _grid_size = {};
   on_rows_cols_t _on_rows_cols;
 
@@ -589,7 +590,7 @@ public:
     UpdateSize();
   }
 
-  D2D1_SIZE_U Size() const { return _pixel_size; }
+  PixelSize Size() const { return _pixel_size; }
 
   void UpdateSize() {
     auto fontSize = FontSize();
@@ -853,18 +854,6 @@ public:
     }
   }
 
-  D2D1_SIZE_U GridToPixelSize(int rows, int cols) {
-    int requested_width = static_cast<int>(ceilf(_dwrite->_font_width) * cols);
-    int requested_height =
-        static_cast<int>(ceilf(_dwrite->_font_height) * rows);
-
-    // Adjust size to include title bar
-    RECT adjusted_rect = {0, 0, requested_width, requested_height};
-    AdjustWindowRect(&adjusted_rect, WS_OVERLAPPEDWINDOW, false);
-    return {.width = (UINT)(adjusted_rect.right - adjusted_rect.left),
-            .height = (UINT)(adjusted_rect.bottom - adjusted_rect.top)};
-  }
-
   D2D1_SIZE_U SetDpiScale(float current_dpi) {
     _dwrite->SetDpiScale(current_dpi);
     return FontSize();
@@ -1042,20 +1031,20 @@ HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context,
 ///
 /// Renderer
 ///
-Renderer::Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
+Renderer::Renderer(void* hwnd, bool disable_ligatures, float linespace_factor,
                    const HighlightAttribute *defaultHL)
-    : _impl(new RendererImpl(hwnd, disable_ligatures, linespace_factor,
+    : _impl(new RendererImpl((HWND)hwnd, disable_ligatures, linespace_factor,
                              defaultHL)) {}
 
 Renderer::~Renderer() { delete _impl; }
 
-D2D1_SIZE_U Renderer::FontSize() const { return _impl->FontSize(); }
+PixelSize Renderer::FontSize() const { return {_impl->FontSize().width, _impl->FontSize().height}; }
 
 void Renderer::Resize(uint32_t width, uint32_t height) {
   _impl->Resize(width, height);
 }
 
-D2D1_SIZE_U Renderer::Size() const { return _impl->Size(); }
+PixelSize Renderer::Size() const { return _impl->Size(); }
 
 void Renderer::DrawGridLine(const NvimGrid *grid, int row) {
   _impl->DrawGridLine(grid, row);
@@ -1101,10 +1090,6 @@ void Renderer::DrawBackgroundRect(int rows, int cols,
 void Renderer::StartDraw() { _impl->StartDraw(); }
 
 void Renderer::FinishDraw() { _impl->FinishDraw(); }
-
-D2D1_SIZE_U Renderer::GridToPixelSize(int rows, int cols) {
-  return _impl->GridToPixelSize(rows, cols);
-}
 
 void Renderer::OnRowsCols(const on_rows_cols_t &callback) {
   _impl->OnRowsCols(callback);

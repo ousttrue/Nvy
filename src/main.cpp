@@ -1,5 +1,5 @@
-#include "nvim_grid.h"
 #include "nvim_frontend.h"
+#include "nvim_grid.h"
 #include "nvim_redraw.h"
 #include "renderer.h"
 #include "win32window.h"
@@ -84,10 +84,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   NvimGrid grid;
   Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
                     &grid.hl(0));
-  // window._on_resize = [&renderer](int w, int h) {
-  //   PLOGD << "window: [" << w << ", " << h << "]";
-  //   renderer.Resize(w, h);
-  // };
 
   NvimFrontend nvim;
   if (!nvim.Launch(cmd.nvim_command_line,
@@ -111,8 +107,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   if (cmd.start_maximized) {
     window.ToggleFullscreen();
   } else if (cmd.rows != 0 && cmd.cols != 0) {
-    auto start_size = renderer.GridToPixelSize(cmd.rows, cmd.cols);
-    window.Resize(start_size.width, start_size.height);
+    auto fontSize = renderer.FontSize();
+    auto requested_width = static_cast<int>(fontSize.width * cmd.cols);
+    auto requested_height = static_cast<int>(fontSize.height * cmd.rows);
+
+    // Adjust size to include title bar
+    RECT rect = {0, 0, requested_width, requested_height};
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, false);
+    window.Resize(rect.right - rect.left, rect.bottom - rect.top);
   }
   UpdateWindow(hwnd);
   ShowWindow(hwnd, SW_SHOWDEFAULT);

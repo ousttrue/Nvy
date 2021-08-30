@@ -1,6 +1,7 @@
 #include "nvim_redraw.h"
 #include "nvim_grid.h"
 #include "renderer.h"
+#include <Windows.h>
 #include <msgpackpp/msgpackpp.h>
 #include <plog/Log.h>
 

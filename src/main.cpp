@@ -111,7 +111,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   if (cmd.start_maximized) {
     window.ToggleFullscreen();
   } else if (cmd.rows != 0 && cmd.cols != 0) {
-    PixelSize start_size = renderer.GridToPixelSize(cmd.rows, cmd.cols);
+    auto start_size = renderer.GridToPixelSize(cmd.rows, cmd.cols);
     window.Resize(start_size.width, start_size.height);
   }
   UpdateWindow(hwnd);

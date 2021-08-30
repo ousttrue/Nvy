@@ -6,7 +6,6 @@
 
 void NvimRedraw::Dispatch(Grid *grid, Renderer *renderer,
                           const msgpackpp::parser &params) {
-  renderer->InitializeWindowDependentResources();
   renderer->StartDraw();
 
   auto redraw_commands_length = params.count();

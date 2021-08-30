@@ -1,85 +1,26 @@
 #pragma once
-#include "cursor.h"
-#include "grid.h"
 #include <d2d1_3.h>
-#include <dwrite_3.h>
 #include <functional>
-#include <memory>
-#include <wrl/client.h>
-
-constexpr const char *DEFAULT_FONT = "Consolas";
-constexpr float DEFAULT_FONT_SIZE = 14.0f;
-
-struct PixelSize {
-  int width;
-  int height;
-};
-
-constexpr int MAX_FONT_LENGTH = 128;
-constexpr float DEFAULT_DPI = 96.0f;
-constexpr float POINTS_PER_INCH = 72.0f;
 
 using on_rows_cols_t = std::function<void(int, int)>;
 struct HighlightAttribute;
 class Grid;
 class Renderer {
-  std::unique_ptr<class DeviceImpl> _device;
-  std::unique_ptr<class SwapchainImpl> _swapchain;
-  std::unique_ptr<class DWriteImpl> _dwrite;
-  Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
-
-  HWND _hwnd = nullptr;
-  bool _draw_active = false;
-
-  const HighlightAttribute *_defaultHL = nullptr;
-
-  D2D1_SIZE_U _pixel_size = {0};
-  GridSize _grid_size = {};
-  on_rows_cols_t _on_rows_cols;
+  class RendererImpl *_impl = nullptr;
 
 public:
   Renderer(HWND hwnd, bool disable_ligatures, float linespace_factor,
            const HighlightAttribute *defaultHL);
   ~Renderer();
-  // backbuffer
-  // void Attach();
-  D2D1_SIZE_U Size() const { return _pixel_size; }
+  // window
+  D2D1_SIZE_U Size() const;
   void Resize(uint32_t width, uint32_t height);
-  void UpdateSize();
-  // font
   D2D1_SIZE_U FontSize() const;
   void UpdateGuiFont(const char *guifont, size_t strlen);
-  void UpdateFont(float font_size, const char *font_string, int strlen);
-  PixelSize GridToPixelSize(int rows, int cols);
-  D2D1_SIZE_U SetDpiScale(float current_dpi);
-  D2D1_SIZE_U ResizeFont(float size);
+  D2D1_SIZE_U GridToPixelSize(int rows, int cols);
   void OnRowsCols(const on_rows_cols_t &callback);
-  void SetGridSize(int rows, int cols);
-  // draw
-  HRESULT
-  DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
-               DWRITE_MEASURING_MODE measuring_mode,
-               DWRITE_GLYPH_RUN const *glyph_run,
-               DWRITE_GLYPH_RUN_DESCRIPTION const *glyph_run_description,
-               IUnknown *client_drawing_effect);
-  HRESULT DrawUnderline(float baseline_origin_x, float baseline_origin_y,
-                        DWRITE_UNDERLINE const *underline,
-                        IUnknown *client_drawing_effect);
-  HRESULT GetCurrentTransform(DWRITE_MATRIX *transform);
-
-  // private:
-  void InitializeWindowDependentResources();
-  void HandleDeviceLost();
-  void ApplyHighlightAttributes(IDWriteTextLayout *text_layout, int start,
-                                int end, const HighlightAttribute *hl_attribs);
-  D2D1_RECT_F GetCursorForegroundRect(D2D1_RECT_F cursor_bg_rect,
-                                      CursorShape shape);
+  // render
   void DrawBackgroundRect(int rows, int cols, const HighlightAttribute *hl);
-  void DrawBackgroundRect(D2D1_RECT_F rect,
-                          const HighlightAttribute *hl_attribs);
-  void DrawHighlightedText(D2D1_RECT_F rect, const wchar_t *text,
-                           uint32_t length,
-                           const HighlightAttribute *hl_attribs);
   void DrawGridLine(const Grid *grid, int row);
   void DrawCursor(const Grid *grid);
   void DrawBorderRectangles(const Grid *grid);

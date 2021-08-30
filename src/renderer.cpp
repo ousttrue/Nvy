@@ -1,7 +1,6 @@
 #include "renderer.h"
 #include "dx_helper.h"
-#include "grid.h"
-#include "hl.h"
+#include "nvim_grid.h"
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
@@ -688,7 +687,7 @@ public:
     _device->_d2d_context->PopAxisAlignedClip();
   }
 
-  void DrawGridLine(const Grid *grid, int row) {
+  void DrawGridLine(const NvimGrid *grid, int row) {
     auto cols = grid->Cols();
     int base = row * cols;
 
@@ -760,7 +759,7 @@ public:
     _device->_d2d_context->PopAxisAlignedClip();
   }
 
-  void DrawCursor(const Grid *grid) {
+  void DrawCursor(const NvimGrid *grid) {
     int cursor_grid_offset = grid->CursorOffset();
 
     int double_width_char_factor = 1;
@@ -792,7 +791,7 @@ public:
     }
   }
 
-  void DrawBorderRectangles(const Grid *grid) {
+  void DrawBorderRectangles(const NvimGrid *grid) {
     float left_border = _dwrite->_font_width * grid->Cols();
     float top_border = _dwrite->_font_height * grid->Rows();
 
@@ -1058,13 +1057,13 @@ void Renderer::Resize(uint32_t width, uint32_t height) {
 
 D2D1_SIZE_U Renderer::Size() const { return _impl->Size(); }
 
-void Renderer::DrawGridLine(const Grid *grid, int row) {
+void Renderer::DrawGridLine(const NvimGrid *grid, int row) {
   _impl->DrawGridLine(grid, row);
 }
 
-void Renderer::DrawCursor(const Grid *grid) { _impl->DrawCursor(grid); }
+void Renderer::DrawCursor(const NvimGrid *grid) { _impl->DrawCursor(grid); }
 
-void Renderer::DrawBorderRectangles(const Grid *grid) {
+void Renderer::DrawBorderRectangles(const NvimGrid *grid) {
   _impl->DrawBorderRectangles(grid);
 }
 

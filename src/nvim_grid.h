@@ -1,11 +1,67 @@
 #pragma once
-#include "cursor.h"
-#include "hl.h"
 #include <functional>
 #include <list>
+#include <stdint.h>
 #include <vector>
 
-constexpr int MAX_CURSOR_MODE_INFOS = 64;
+enum HighlightAttributeFlags : uint16_t {
+  HL_ATTRIB_REVERSE = 1 << 0,
+  HL_ATTRIB_ITALIC = 1 << 1,
+  HL_ATTRIB_BOLD = 1 << 2,
+  HL_ATTRIB_STRIKETHROUGH = 1 << 3,
+  HL_ATTRIB_UNDERLINE = 1 << 4,
+  HL_ATTRIB_UNDERCURL = 1 << 5
+};
+
+constexpr uint32_t DEFAULT_COLOR = 0x46464646;
+
+struct HighlightAttribute {
+  uint32_t foreground;
+  uint32_t background;
+  uint32_t special;
+  uint16_t flags;
+  HighlightAttribute *_default;
+
+  uint32_t CreateForegroundColor() const {
+    if (this->flags & HL_ATTRIB_REVERSE) {
+      return this->background == DEFAULT_COLOR ? this->_default->background
+                                               : this->background;
+    } else {
+      return this->foreground == DEFAULT_COLOR ? this->_default->foreground
+                                               : this->foreground;
+    }
+  }
+
+  uint32_t CreateBackgroundColor() const {
+    if (this->flags & HL_ATTRIB_REVERSE) {
+      return this->foreground == DEFAULT_COLOR ? this->_default->foreground
+                                               : this->foreground;
+    } else {
+      return this->background == DEFAULT_COLOR ? this->_default->background
+                                               : this->background;
+    }
+  }
+
+  uint32_t CreateSpecialColor() const {
+    return this->special == DEFAULT_COLOR ? this->_default->special
+                                          : this->special;
+  }
+};
+
+using HighlightAttributes = std::vector<HighlightAttribute>;
+
+enum class CursorShape { None, Block, Vertical, Horizontal };
+
+struct CursorModeInfo {
+  CursorShape shape;
+  uint16_t hl_attrib_id;
+};
+
+struct Cursor {
+  CursorModeInfo *mode_info;
+  int row;
+  int col;
+};
 
 struct CellProperty {
   uint16_t hl_attrib_id;
@@ -37,8 +93,9 @@ struct GridSize {
   }
 };
 using GridSizeChanged = std::function<void(const GridSize &)>;
+constexpr int MAX_CURSOR_MODE_INFOS = 64;
 
-class Grid {
+class NvimGrid {
   GridSize _size = {};
   std::vector<wchar_t> _grid_chars;
   std::vector<CellProperty> _grid_cell_properties;
@@ -48,10 +105,10 @@ class Grid {
   HighlightAttributes _hl;
 
 public:
-  Grid();
-  ~Grid();
-  Grid(const Grid &) = delete;
-  Grid &operator=(const Grid &) = delete;
+  NvimGrid();
+  ~NvimGrid();
+  NvimGrid(const NvimGrid &) = delete;
+  NvimGrid &operator=(const NvimGrid &) = delete;
 
   void OnSizeChanged(const GridSizeChanged &callback) {
     _sizeCallbacks.push_back(callback);

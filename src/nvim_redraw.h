@@ -7,22 +7,22 @@ class parser;
 struct NvimRedraw {
   bool _ui_busy = false;
 
-  void Dispatch(class Grid *grid, class Renderer *renderer,
+  void Dispatch(class NvimGrid *grid, class Renderer *renderer,
                 const msgpackpp::parser &params);
 
 private:
   void SetGuiOptions(class Renderer *renderer,
                      const msgpackpp::parser &option_set);
-  void UpdateGridSize(Grid *grid, const msgpackpp::parser &grid_resize);
-  void UpdateCursorPos(Grid *grid, const msgpackpp::parser &cursor_goto);
-  void UpdateCursorModeInfos(Grid *grid,
+  void UpdateGridSize(NvimGrid *grid, const msgpackpp::parser &grid_resize);
+  void UpdateCursorPos(NvimGrid *grid, const msgpackpp::parser &cursor_goto);
+  void UpdateCursorModeInfos(NvimGrid *grid,
                              const msgpackpp::parser &mode_info_set_params);
-  void UpdateCursorMode(Grid *grid, const msgpackpp::parser &mode_change);
-  void UpdateDefaultColors(Grid *grid, const msgpackpp::parser &default_colors);
-  void UpdateHighlightAttributes(Grid *grid,
+  void UpdateCursorMode(NvimGrid *grid, const msgpackpp::parser &mode_change);
+  void UpdateDefaultColors(NvimGrid *grid, const msgpackpp::parser &default_colors);
+  void UpdateHighlightAttributes(NvimGrid *grid,
                                  const msgpackpp::parser &highlight_attribs);
-  void DrawGridLines(Grid *grid, Renderer *renderer,
+  void DrawGridLines(NvimGrid *grid, Renderer *renderer,
                      const msgpackpp::parser &grid_lines);
-  void ScrollRegion(Grid *grid, Renderer *renderer,
+  void ScrollRegion(NvimGrid *grid, Renderer *renderer,
                     const msgpackpp::parser &scroll_region);
 };

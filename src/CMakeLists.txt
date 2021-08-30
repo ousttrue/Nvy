@@ -6,8 +6,8 @@ target_sources(
          "nvim_frontend.cpp"
          "nvim_pipe.cpp"
          "nvim_redraw.cpp"
+         "nvim_grid.cpp"
          "renderer.cpp"
-         "grid.cpp"
          "win32window.cpp")
 
 target_link_libraries(

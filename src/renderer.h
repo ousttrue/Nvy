@@ -4,7 +4,7 @@
 
 using on_rows_cols_t = std::function<void(int, int)>;
 struct HighlightAttribute;
-class Grid;
+class NvimGrid;
 class Renderer {
   class RendererImpl *_impl = nullptr;
 
@@ -21,9 +21,9 @@ public:
   void OnRowsCols(const on_rows_cols_t &callback);
   // render
   void DrawBackgroundRect(int rows, int cols, const HighlightAttribute *hl);
-  void DrawGridLine(const Grid *grid, int row);
-  void DrawCursor(const Grid *grid);
-  void DrawBorderRectangles(const Grid *grid);
+  void DrawGridLine(const NvimGrid *grid, int row);
+  void DrawCursor(const NvimGrid *grid);
+  void DrawBorderRectangles(const NvimGrid *grid);
   void StartDraw();
   void FinishDraw();
 };

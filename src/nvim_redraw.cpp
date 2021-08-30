@@ -1,10 +1,10 @@
 #include "nvim_redraw.h"
-#include "grid.h"
+#include "nvim_grid.h"
 #include "renderer.h"
 #include <msgpackpp/msgpackpp.h>
 #include <plog/Log.h>
 
-void NvimRedraw::Dispatch(Grid *grid, Renderer *renderer,
+void NvimRedraw::Dispatch(NvimGrid *grid, Renderer *renderer,
                           const msgpackpp::parser &params) {
   renderer->StartDraw();
 
@@ -81,7 +81,7 @@ void NvimRedraw::SetGuiOptions(Renderer *renderer,
 }
 
 // ["grid_resize",[1,190,45]]
-void NvimRedraw::UpdateGridSize(Grid *grid,
+void NvimRedraw::UpdateGridSize(NvimGrid *grid,
                                 const msgpackpp::parser &grid_resize) {
   auto grid_resize_params = grid_resize[1];
   int grid_cols = grid_resize_params[1].get_number<int>();
@@ -90,7 +90,7 @@ void NvimRedraw::UpdateGridSize(Grid *grid,
 }
 
 // ["grid_cursor_goto",[1,0,4]]
-void NvimRedraw::UpdateCursorPos(Grid *grid,
+void NvimRedraw::UpdateCursorPos(NvimGrid *grid,
                                  const msgpackpp::parser &cursor_goto) {
   auto cursor_goto_params = cursor_goto[1];
   auto row = cursor_goto_params[1].get_number<int>();
@@ -100,7 +100,7 @@ void NvimRedraw::UpdateCursorPos(Grid *grid,
 
 // ["mode_info_set",[true,[{"mouse_shape":0...
 void NvimRedraw::UpdateCursorModeInfos(
-    Grid *grid, const msgpackpp::parser &mode_info_set_params) {
+    NvimGrid *grid, const msgpackpp::parser &mode_info_set_params) {
   auto mode_info_params = mode_info_set_params[1];
   auto mode_infos = mode_info_params[1];
   size_t mode_infos_length = mode_infos.count();
@@ -132,14 +132,14 @@ void NvimRedraw::UpdateCursorModeInfos(
 }
 
 // ["mode_change",["normal",0]]
-void NvimRedraw::UpdateCursorMode(Grid *grid,
+void NvimRedraw::UpdateCursorMode(NvimGrid *grid,
                                   const msgpackpp::parser &mode_change) {
   auto mode_change_params = mode_change[1];
   grid->SetCursorModeInfo(mode_change_params[1].get_number<int>());
 }
 
 // ["default_colors_set",[1.67772e+07,0,1.67117e+07,0,0]]
-void NvimRedraw::UpdateDefaultColors(Grid *grid,
+void NvimRedraw::UpdateDefaultColors(NvimGrid *grid,
                                      const msgpackpp::parser &default_colors) {
   size_t default_colors_arr_length = default_colors.count();
   for (size_t i = 1; i < default_colors_arr_length; ++i) {
@@ -158,11 +158,10 @@ void NvimRedraw::UpdateDefaultColors(Grid *grid,
 
 // ["hl_attr_define",[1,{},{},[]],[2,{"foreground":1.38823e+07,"background":1.1119e+07},{"for
 void NvimRedraw::UpdateHighlightAttributes(
-    Grid *grid, const msgpackpp::parser &highlight_attribs) {
+    NvimGrid *grid, const msgpackpp::parser &highlight_attribs) {
   uint64_t attrib_count = highlight_attribs.count();
   for (uint64_t i = 1; i < attrib_count; ++i) {
     int64_t attrib_index = highlight_attribs[i][0].get_number<int>();
-    assert(attrib_index <= MAX_HIGHLIGHT_ATTRIBS);
 
     auto attrib_map = highlight_attribs[i][1];
 
@@ -200,7 +199,7 @@ void NvimRedraw::UpdateHighlightAttributes(
 
 // ["grid_line",[1,50,193,[[" ",1]]],[1,49,193,[["4",218],["%"],[" "],["
 // ",215,2],["2"],["9"],[":"],["0"]]]]
-void NvimRedraw::DrawGridLines(Grid *grid, Renderer *renderer,
+void NvimRedraw::DrawGridLines(NvimGrid *grid, Renderer *renderer,
                                const msgpackpp::parser &grid_lines) {
   int grid_size = grid->Count();
   size_t line_count = grid_lines.count();
@@ -280,7 +279,7 @@ void NvimRedraw::DrawGridLines(Grid *grid, Renderer *renderer,
   }
 }
 
-void NvimRedraw::ScrollRegion(Grid *grid, Renderer *renderer,
+void NvimRedraw::ScrollRegion(NvimGrid *grid, Renderer *renderer,
                               const msgpackpp::parser &scroll_region) {
   PLOGD << scroll_region;
   auto scroll_region_params = scroll_region[1];

@@ -1,4 +1,4 @@
-#include "grid.h"
+#include "nvim_grid.h"
 #include "nvim_frontend.h"
 #include "nvim_redraw.h"
 #include "renderer.h"
@@ -81,7 +81,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     return 1;
   }
 
-  Grid grid;
+  NvimGrid grid;
   Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
                     &grid.hl(0));
   // window._on_resize = [&renderer](int w, int h) {

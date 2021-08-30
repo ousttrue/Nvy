@@ -75,8 +75,7 @@ void NvimRedraw::SetGuiOptions(Renderer *renderer,
     auto name = item[0].get_string();
     if (name == "guifont") {
       auto font_str = item[1].get_string();
-      // size_t strlen = mpack_node_strlen(value);
-      renderer->UpdateGuiFont(font_str.data(), font_str.size());
+      renderer->SetFont(font_str);
     }
   }
 }

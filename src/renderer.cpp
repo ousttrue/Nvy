@@ -1,7 +1,6 @@
 #include "renderer.h"
 #include "dx_helper.h"
 #include "nvim_grid.h"
-#include <d2d1_3.h>
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
@@ -219,23 +218,23 @@ public:
 
   void ResizeFont(float size) { UpdateFont(_last_requested_font_size + size); }
 
-  void UpdateFont(float font_size, const char *font_string = "",
-                  int strlen = 0) {
+  void UpdateFont(float font_size, std::string_view font_string = {}) {
     this->_dwrite_text_format.Reset();
-    this->UpdateFontMetrics(font_size, font_string, strlen);
+    this->UpdateFontMetrics(font_size, font_string);
   }
 
-  void UpdateFontMetrics(float font_size, const char *font_string, int strlen) {
+  void UpdateFontMetrics(float font_size, std::string_view font_string) {
     font_size = std::max(5.0f, std::min(font_size, 150.0f));
     this->_last_requested_font_size = font_size;
 
     ComPtr<IDWriteFontCollection> font_collection;
     WIN_CHECK(this->_dwrite_factory->GetSystemFontCollection(&font_collection));
 
-    int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
+    int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string.data(),
+                                      font_string.size(), 0, 0);
     if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH) {
-      MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, this->_font,
-                          MAX_FONT_LENGTH - 1);
+      MultiByteToWideChar(CP_UTF8, 0, font_string.data(), font_string.size(),
+                          this->_font, MAX_FONT_LENGTH - 1);
       this->_font[wstrlen] = L'\0';
     }
 
@@ -580,8 +579,7 @@ public:
     _d2d_target_bitmap.Reset();
 
     _device = DeviceImpl::Create();
-    this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT,
-                     static_cast<int>(strlen(DEFAULT_FONT)));
+    this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT);
   }
 
   void Resize(uint32_t width, uint32_t height) {
@@ -606,8 +604,8 @@ public:
     };
   }
 
-  void UpdateFont(float font_size, const char *font_string, int strlen) {
-    _dwrite->UpdateFont(font_size, font_string, strlen);
+  void UpdateFont(float font_size, std::string_view font_string) {
+    _dwrite->UpdateFont(font_size, font_string);
     UpdateSize();
   }
 
@@ -1031,20 +1029,20 @@ HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context,
 ///
 /// Renderer
 ///
-Renderer::Renderer(void* hwnd, bool disable_ligatures, float linespace_factor,
+Renderer::Renderer(void *hwnd, bool disable_ligatures, float linespace_factor,
                    const HighlightAttribute *defaultHL)
     : _impl(new RendererImpl((HWND)hwnd, disable_ligatures, linespace_factor,
                              defaultHL)) {}
 
 Renderer::~Renderer() { delete _impl; }
 
-PixelSize Renderer::FontSize() const { return {_impl->FontSize().width, _impl->FontSize().height}; }
+PixelSize Renderer::FontSize() const {
+  return {_impl->FontSize().width, _impl->FontSize().height};
+}
 
 void Renderer::Resize(uint32_t width, uint32_t height) {
   _impl->Resize(width, height);
 }
-
-PixelSize Renderer::Size() const { return _impl->Size(); }
 
 void Renderer::DrawGridLine(const NvimGrid *grid, int row) {
   _impl->DrawGridLine(grid, row);
@@ -1056,30 +1054,20 @@ void Renderer::DrawBorderRectangles(const NvimGrid *grid) {
   _impl->DrawBorderRectangles(grid);
 }
 
-void Renderer::UpdateGuiFont(const char *guifont, size_t strlen) {
-  if (strlen == 0) {
+void Renderer::SetFont(std::string_view guifont) {
+  if (guifont.empty()) {
     return;
   }
 
-  const char *size_str = strstr(guifont, ":h");
-  if (!size_str) {
+  auto size_str = guifont.find(":h");
+  if (size_str == std::string::npos) {
     return;
   }
 
-  size_t font_str_len = size_str - guifont;
-  size_t size_str_len = strlen - (font_str_len + 2);
-  size_str += 2;
+  std::string font_size_str(guifont.begin() + size_str + 2, guifont.end());
+  auto font_size = static_cast<float>(atof(font_size_str.c_str()));
 
-  float font_size = DEFAULT_FONT_SIZE;
-  // Assume font size part of string is less than 256 characters
-  if (size_str_len < 256) {
-    char font_size_str[256];
-    memcpy(font_size_str, size_str, size_str_len);
-    font_size_str[size_str_len] = '\0';
-    font_size = static_cast<float>(atof(font_size_str));
-  }
-
-  _impl->UpdateFont(font_size, guifont, static_cast<int>(font_str_len));
+  _impl->UpdateFont(font_size, guifont.substr(0, size_str));
 }
 
 void Renderer::DrawBackgroundRect(int rows, int cols,

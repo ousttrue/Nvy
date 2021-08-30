@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <stdint.h>
+#include <string_view>
 
 using on_rows_cols_t = std::function<void(int, int)>;
 
@@ -18,10 +19,9 @@ public:
            const HighlightAttribute *defaultHL);
   ~Renderer();
   // window
-  PixelSize Size() const;
   void Resize(uint32_t width, uint32_t height);
   PixelSize FontSize() const;
-  void UpdateGuiFont(const char *guifont, size_t strlen);
+  void SetFont(std::string_view font);
   void OnRowsCols(const on_rows_cols_t &callback);
   // render
   void DrawBackgroundRect(int rows, int cols, const HighlightAttribute *hl);

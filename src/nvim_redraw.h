@@ -1,4 +1,6 @@
 #pragma once
+#include <string_view>
+#include <tuple>
 
 namespace msgpackpp {
 class parser;
@@ -9,6 +11,8 @@ struct NvimRedraw {
 
   void Dispatch(class NvimGrid *grid, class Renderer *renderer,
                 const msgpackpp::parser &params);
+  static std::tuple<std::string_view, float>
+  ParseGUIFont(std::string_view gui_font);
 
 private:
   void SetGuiOptions(class Renderer *renderer,
@@ -18,7 +22,8 @@ private:
   void UpdateCursorModeInfos(NvimGrid *grid,
                              const msgpackpp::parser &mode_info_set_params);
   void UpdateCursorMode(NvimGrid *grid, const msgpackpp::parser &mode_change);
-  void UpdateDefaultColors(NvimGrid *grid, const msgpackpp::parser &default_colors);
+  void UpdateDefaultColors(NvimGrid *grid,
+                           const msgpackpp::parser &default_colors);
   void UpdateHighlightAttributes(NvimGrid *grid,
                                  const msgpackpp::parser &highlight_attribs);
   void DrawGridLines(NvimGrid *grid, Renderer *renderer,

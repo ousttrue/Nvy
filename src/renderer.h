@@ -20,8 +20,8 @@ public:
   ~Renderer();
   // window
   void Resize(uint32_t width, uint32_t height);
+  void SetFont(std::string_view font, float size);
   PixelSize FontSize() const;
-  void SetFont(std::string_view font);
   void OnRowsCols(const on_rows_cols_t &callback);
   // render
   void DrawBackgroundRect(int rows, int cols, const HighlightAttribute *hl);

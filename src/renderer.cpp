@@ -224,6 +224,10 @@ public:
   }
 
   void UpdateFontMetrics(float font_size, std::string_view font_string) {
+    if (font_size == 0) {
+      return;
+    }
+
     font_size = std::max(5.0f, std::min(font_size, 150.0f));
     this->_last_requested_font_size = font_size;
 
@@ -579,7 +583,7 @@ public:
     _d2d_target_bitmap.Reset();
 
     _device = DeviceImpl::Create();
-    this->UpdateFont(DEFAULT_FONT_SIZE, DEFAULT_FONT);
+    this->SetFont(DEFAULT_FONT, DEFAULT_FONT_SIZE);
   }
 
   void Resize(uint32_t width, uint32_t height) {
@@ -604,7 +608,7 @@ public:
     };
   }
 
-  void UpdateFont(float font_size, std::string_view font_string) {
+  void SetFont(std::string_view font_string, float font_size) {
     _dwrite->UpdateFont(font_size, font_string);
     UpdateSize();
   }
@@ -1054,20 +1058,8 @@ void Renderer::DrawBorderRectangles(const NvimGrid *grid) {
   _impl->DrawBorderRectangles(grid);
 }
 
-void Renderer::SetFont(std::string_view guifont) {
-  if (guifont.empty()) {
-    return;
-  }
-
-  auto size_str = guifont.find(":h");
-  if (size_str == std::string::npos) {
-    return;
-  }
-
-  std::string font_size_str(guifont.begin() + size_str + 2, guifont.end());
-  auto font_size = static_cast<float>(atof(font_size_str.c_str()));
-
-  _impl->UpdateFont(font_size, guifont.substr(0, size_str));
+void Renderer::SetFont(std::string_view font, float size) {
+  _impl->SetFont(font, size);
 }
 
 void Renderer::DrawBackgroundRect(int rows, int cols,

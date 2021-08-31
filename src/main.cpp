@@ -98,10 +98,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   });
 
   // setfont
-  auto guifont_buffer = nvim.Initialize();
-  if (!guifont_buffer.empty()) {
-    renderer.SetFont(guifont_buffer);
-  }
+  auto guifont = nvim.Initialize();
+  // Consolas:h14
+  auto [font, size] = NvimRedraw::ParseGUIFont(guifont);
+  renderer.SetFont(font, size);
 
   // initial window size
   if (cmd.start_maximized) {
@@ -135,8 +135,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   auto [w, h] = window.Size();
   renderer.Resize(w, h);
   auto fontSize = renderer.FontSize();
-  auto gridSize = GridSize::FromWindowSize(w, h,
-                                           fontSize.width, fontSize.height);
+  auto gridSize =
+      GridSize::FromWindowSize(w, h, fontSize.width, fontSize.height);
 
   NvimRedraw redraw;
   nvim.AttachUI(

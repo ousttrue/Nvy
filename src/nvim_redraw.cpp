@@ -5,6 +5,18 @@
 #include <msgpackpp/msgpackpp.h>
 #include <plog/Log.h>
 
+// font_name:h14
+std::tuple<std::string_view, float>
+NvimRedraw::ParseGUIFont(std::string_view guifont) {
+  auto size_str = guifont.find(":h");
+  if (size_str == std::string::npos) {
+    return {};
+  }
+  std::string font_size_str(guifont.begin() + size_str + 2, guifont.end());
+  auto font_size = static_cast<float>(atof(font_size_str.c_str()));
+  return {guifont.substr(0, size_str), font_size};
+}
+
 void NvimRedraw::Dispatch(NvimGrid *grid, Renderer *renderer,
                           const msgpackpp::parser &params) {
   renderer->StartDraw();
@@ -74,8 +86,8 @@ void NvimRedraw::SetGuiOptions(Renderer *renderer,
   for (uint64_t i = 1; i < option_set_length; ++i, item = item.next()) {
     auto name = item[0].get_string();
     if (name == "guifont") {
-      auto font_str = item[1].get_string();
-      renderer->SetFont(font_str);
+      auto [font, size] = ParseGUIFont(item[1].get_string());
+      renderer->SetFont(font, size);
     }
   }
 }

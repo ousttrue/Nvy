@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "dx_helper.h"
 #include "nvim_grid.h"
+#include "swapchain.h"
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
@@ -417,94 +418,6 @@ public:
   }
 };
 
-class SwapchainImpl {
-  ComPtr<IDXGISwapChain2> _dxgi_swapchain;
-  HANDLE _swapchain_wait_handle = nullptr;
-  DXGI_SWAP_CHAIN_DESC _desc;
-
-public:
-  static std::unique_ptr<SwapchainImpl>
-  Create(const ComPtr<ID3D11Device2> &d3d_device, HWND hwnd) {
-    DXGI_SWAP_CHAIN_DESC1 swapchain_desc{
-        .Width = 0,
-        .Height = 0,
-        .Format = DXGI_FORMAT_B8G8R8A8_UNORM,
-        .SampleDesc = {.Count = 1, .Quality = 0},
-        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
-        .BufferCount = 2,
-        .Scaling = DXGI_SCALING_NONE,
-        .SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-        .AlphaMode = DXGI_ALPHA_MODE_IGNORE,
-        .Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT |
-                 DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING};
-
-    ComPtr<IDXGIDevice3> dxgi_device;
-    WIN_CHECK(d3d_device.As(&dxgi_device));
-    ComPtr<IDXGIAdapter> dxgi_adapter;
-    WIN_CHECK(dxgi_device->GetAdapter(&dxgi_adapter));
-    ComPtr<IDXGIFactory2> dxgi_factory;
-    WIN_CHECK(dxgi_adapter->GetParent(IID_PPV_ARGS(&dxgi_factory)));
-
-    ComPtr<IDXGISwapChain1> dxgi_swapchain_temp;
-    WIN_CHECK(dxgi_factory->CreateSwapChainForHwnd(
-        d3d_device.Get(), hwnd, &swapchain_desc, nullptr, nullptr,
-        &dxgi_swapchain_temp));
-    WIN_CHECK(dxgi_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER));
-    ComPtr<IDXGISwapChain2> dxgi_swapchain;
-    WIN_CHECK(dxgi_swapchain_temp.As(&dxgi_swapchain));
-    WIN_CHECK(dxgi_swapchain->SetMaximumFrameLatency(1));
-
-    auto p = std::unique_ptr<SwapchainImpl>(new SwapchainImpl);
-    p->_dxgi_swapchain = dxgi_swapchain;
-    p->_swapchain_wait_handle =
-        p->_dxgi_swapchain->GetFrameLatencyWaitableObject();
-    p->_dxgi_swapchain->GetDesc(&p->_desc);
-
-    return p;
-  }
-
-  void Wait() { WaitForSingleObjectEx(_swapchain_wait_handle, 1000, true); }
-
-  std::tuple<uint32_t, uint32_t> GetSize() const {
-    return std::make_pair(_desc.BufferDesc.Width, _desc.BufferDesc.Height);
-  }
-
-  HRESULT Resize(uint32_t w, uint32_t h) {
-    DXGI_SWAP_CHAIN_DESC desc;
-    _dxgi_swapchain->GetDesc(&desc);
-    if (desc.BufferDesc.Width == w && desc.BufferDesc.Height == h) {
-      return S_OK;
-    }
-
-    HRESULT hr = this->_dxgi_swapchain->ResizeBuffers(
-        2, w, h, DXGI_FORMAT_B8G8R8A8_UNORM,
-        DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT |
-            DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
-    return hr;
-  }
-
-  ComPtr<IDXGISurface2> GetBackbuffer() {
-    ComPtr<IDXGISurface2> dxgi_backbuffer;
-    WIN_CHECK(
-        this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&dxgi_backbuffer)));
-    return dxgi_backbuffer;
-  }
-
-  HRESULT
-  PresentCopyFrontToBack(const ComPtr<ID3D11DeviceContext2> &d3d_context) {
-    HRESULT hr = this->_dxgi_swapchain->Present(0, 0);
-    if (FAILED(hr)) {
-      return hr;
-    }
-
-    ComPtr<ID3D11Resource> back;
-    WIN_CHECK(this->_dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&back)));
-    ComPtr<ID3D11Resource> front;
-    WIN_CHECK(this->_dxgi_swapchain->GetBuffer(1, IID_PPV_ARGS(&front)));
-    d3d_context->CopyResource(back.Get(), front.Get());
-    return S_OK;
-  }
-};
 
 static UINT GetMonitorDpi(HWND hwnd) {
   RECT window_rect;
@@ -520,7 +433,7 @@ static UINT GetMonitorDpi(HWND hwnd) {
 
 class RendererImpl {
   std::unique_ptr<class DeviceImpl> _device;
-  std::unique_ptr<class SwapchainImpl> _swapchain;
+  std::unique_ptr<class Swapchain> _swapchain;
   std::unique_ptr<class DWriteImpl> _dwrite;
   Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
@@ -559,7 +472,7 @@ public:
         this->HandleDeviceLost();
       }
     } else {
-      this->_swapchain = SwapchainImpl::Create(_device->_d3d_device, _hwnd);
+      this->_swapchain = Swapchain::Create(_device->_d3d_device, _hwnd);
     }
 
     auto dxgi_backbuffer = _swapchain->GetBackbuffer();

@@ -4,11 +4,14 @@
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
     ],
     "cSpell.words": [
+        "HRESULT",
         "HWND",
+        "IDXGI",
         "LPARAM",
         "LRESULT",
         "Nvim",
         "PWSTR",
+        "dxgi",
         "mpack",
         "msgpackpp"
     ],

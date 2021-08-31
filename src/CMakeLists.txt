@@ -8,6 +8,7 @@ target_sources(
          "nvim_redraw.cpp"
          "nvim_grid.cpp"
          "renderer.cpp"
+         "swapchain.cpp"
          "win32window.cpp")
 
 target_link_libraries(

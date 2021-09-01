@@ -84,17 +84,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   }
 
   NvimGrid grid;
-  Renderer renderer(hwnd, cmd.disable_ligatures, cmd.linespace_factor,
-                    &grid.hl(0));
+  Renderer renderer(cmd.disable_ligatures, cmd.linespace_factor,
+                    window.GetMonitorDpi(), &grid.hl(0));
 
   NvimFrontend nvim;
   if (!nvim.Launch(cmd.nvim_command_line,
                    [hwnd]() { PostMessage(hwnd, WM_CLOSE, 0, 0); })) {
     return 3;
   }
-  // grid.OnSizeChanged(
-  //     [&nvim](const GridSize &size) { nvim.ResizeGrid(size.rows, size.cols);
-  //     });
 
   // setfont
   auto guifont = nvim.Initialize();

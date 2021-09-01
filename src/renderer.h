@@ -7,7 +7,7 @@ class Renderer {
   class RendererImpl *_impl = nullptr;
 
 public:
-  Renderer(void *hwnd, bool disable_ligatures, float linespace_factor,
+  Renderer(bool disable_ligatures, float linespace_factor, uint32_t monitor_dpi,
            const HighlightAttribute *defaultHL);
   ~Renderer();
   // font size

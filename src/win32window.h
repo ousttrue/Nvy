@@ -29,4 +29,5 @@ public:
   void ToggleFullscreen();
   void Resize(int w, int h);
   std::tuple<int, int> Size() const;
+  uint32_t GetMonitorDpi()const;
 };

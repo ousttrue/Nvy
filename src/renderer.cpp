@@ -5,10 +5,8 @@
 #include <assert.h>
 #include <d2d1_3.h>
 #include <d3d11_4.h>
-#include <dwmapi.h>
 #include <dwrite_3.h>
 #include <dxgi1_2.h>
-#include <shellscalingapi.h>
 #include <tuple>
 #include <vector>
 #include <wrl/client.h>
@@ -395,34 +393,20 @@ public:
   }
 };
 
-static UINT GetMonitorDpi(HWND hwnd) {
-  RECT window_rect;
-  DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
-                        sizeof(RECT));
-  HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
-                                      MONITOR_DEFAULTTONEAREST);
-
-  UINT dpi = 0;
-  GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi, &dpi);
-  return dpi;
-}
-
 class RendererImpl {
   std::unique_ptr<class DeviceImpl> _device;
   std::unique_ptr<class DWriteImpl> _dwrite;
 
-  HWND _hwnd = nullptr;
   bool _draw_active = false;
 
   const HighlightAttribute *_defaultHL = nullptr;
 
 public:
-  RendererImpl(HWND hwnd, bool disable_ligatures, float linespace_factor,
-               const HighlightAttribute *defaultHL)
+  RendererImpl(bool disable_ligatures, float linespace_factor,
+               uint32_t monitor_dpi, const HighlightAttribute *defaultHL)
       : _dwrite(DWriteImpl::Create(disable_ligatures, linespace_factor,
-                                   GetMonitorDpi(hwnd))),
+                                   monitor_dpi)),
         _defaultHL(defaultHL) {
-    this->_hwnd = hwnd;
     this->SetFont(DEFAULT_FONT, DEFAULT_FONT_SIZE);
   }
 
@@ -850,9 +834,9 @@ HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context,
 ///
 /// Renderer
 ///
-Renderer::Renderer(void *hwnd, bool disable_ligatures, float linespace_factor,
-                   const HighlightAttribute *defaultHL)
-    : _impl(new RendererImpl((HWND)hwnd, disable_ligatures, linespace_factor,
+Renderer::Renderer(bool disable_ligatures, float linespace_factor,
+                   uint32_t monitor_dpi, const HighlightAttribute *defaultHL)
+    : _impl(new RendererImpl(disable_ligatures, linespace_factor, monitor_dpi,
                              defaultHL)) {}
 
 Renderer::~Renderer() { delete _impl; }
@@ -882,7 +866,7 @@ void Renderer::DrawBackgroundRect(int rows, int cols,
 }
 
 std::tuple<int, int> Renderer::StartDraw(ID3D11Device2 *device,
-                                    IDXGISurface2 *backbuffer) {
+                                         IDXGISurface2 *backbuffer) {
   return _impl->StartDraw(device, backbuffer);
 }
 

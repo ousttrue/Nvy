@@ -1,5 +1,7 @@
 #include "win32window.h"
 #include <Windows.h>
+#include <dwmapi.h>
+#include <shellscalingapi.h>
 
 WINDOWPLACEMENT saved_window_placement = {.length = sizeof(WINDOWPLACEMENT)};
 
@@ -501,4 +503,16 @@ std::tuple<int, int> Win32Window::Size() const {
   GetClientRect(hwnd, &client_rect);
   return {client_rect.right - client_rect.left,
           client_rect.bottom - client_rect.top};
+}
+
+uint32_t Win32Window::GetMonitorDpi() const {
+  RECT window_rect;
+  DwmGetWindowAttribute((HWND)_hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
+                        sizeof(RECT));
+  HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
+                                      MONITOR_DEFAULTTONEAREST);
+
+  UINT dpi = 0;
+  GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi, &dpi);
+  return dpi;
 }

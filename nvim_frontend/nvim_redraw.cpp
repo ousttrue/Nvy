@@ -17,10 +17,9 @@ NvimRedraw::ParseGUIFont(std::string_view guifont) {
   return {guifont.substr(0, size_str), font_size};
 }
 
-void NvimRedraw::Dispatch(ID3D11Device2 *device, IDXGISurface2 *target,
-                          NvimGrid *grid, NvimRenderer *renderer,
+void NvimRedraw::Dispatch(NvimGrid *grid, NvimRenderer *renderer,
                           const msgpackpp::parser &params) {
-  auto [w, h] = renderer->StartDraw(device, target);
+  auto [w, h] = renderer->StartDraw();
 
   auto redraw_commands_length = params.count();
   auto redraw_command_arr = params.first_array_item().value;

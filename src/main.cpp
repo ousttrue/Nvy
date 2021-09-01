@@ -1,12 +1,12 @@
 #include "commandline.h"
-#include <nvim_frontend.h>
-#include <nvim_grid.h>
-#include <nvim_redraw.h>
 #include "renderer.h"
 #include "renderer/d3d.h"
 #include "renderer/swapchain.h"
 #include "win32window.h"
 #include <Windows.h>
+#include <nvim_frontend.h>
+#include <nvim_grid.h>
+#include <nvim_redraw.h>
 #include <plog/Appenders/DebugOutputAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Init.h>
@@ -38,9 +38,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   auto [font, size] = nvim.Initialize();
 
   // setup renderer
+  // create swapchain
+  auto d3d = D3D::Create();
+  auto swapchain = Swapchain::Create(d3d->Device(), hwnd);
+
   NvimGrid grid;
-  Renderer renderer(cmd.disable_ligatures, cmd.linespace_factor,
-                    window.GetMonitorDpi(), &grid.hl(0));
+  Renderer renderer(d3d->Device().Get(), cmd.disable_ligatures,
+                    cmd.linespace_factor, window.GetMonitorDpi(), &grid.hl(0));
   renderer.SetFont(font, size);
 
   // initial window size
@@ -77,26 +81,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   auto gridSize = GridSize::FromWindowSize(
       window_width, window_height, ceilf(font_width), ceilf(font_height));
 
-  // create swapchain
-  auto d3d = D3D::Create();
-  auto swapchain = Swapchain::Create(d3d->Device(), hwnd);
-
   // nvim_attach_ui. start redraw message
   NvimRedraw redraw;
   nvim.AttachUI(
-      [&redraw, &renderer, &grid, &d3d,
-       &swapchain](const msgpackpp::parser &msg) {
-        auto dxgi_backbuffer = swapchain->GetBackbuffer();
-
-        redraw.Dispatch(d3d->Device().Get(), dxgi_backbuffer.Get(), &grid,
-                        &renderer, msg);
-
-        auto hr = swapchain->PresentCopyFrontToBack(d3d->Context());
-
-        if (hr == DXGI_ERROR_DEVICE_REMOVED) {
-          assert(false);
-          // this->HandleDeviceLost();
-        }
+      [&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
+        redraw.Dispatch(&grid, &renderer, msg);
       },
       gridSize.rows, gridSize.cols);
 
@@ -127,7 +116,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     }
 
     // process nvim message
+    auto backbuffer = swapchain->GetBackbuffer();
+    renderer.SetTarget(backbuffer.Get());
     nvim.Process();
+    renderer.SetTarget(nullptr);
+    auto hr = swapchain->PresentCopyFrontToBack(d3d->Context());
+    if (hr == DXGI_ERROR_DEVICE_REMOVED) {
+      assert(false);
+      // this->HandleDeviceLost();
+    }
   }
 
   return 0;

@@ -394,6 +394,8 @@ public:
 };
 
 class RendererImpl {
+  ComPtr<ID3D11Device2> _d3d_device;
+  ComPtr<IDXGISurface2> _dxgi_backbuffer;
   std::unique_ptr<class DeviceImpl> _device;
   std::unique_ptr<class DWriteImpl> _dwrite;
 
@@ -402,12 +404,18 @@ class RendererImpl {
   const HighlightAttribute *_defaultHL = nullptr;
 
 public:
-  RendererImpl(bool disable_ligatures, float linespace_factor,
-               uint32_t monitor_dpi, const HighlightAttribute *defaultHL)
-      : _dwrite(DWriteImpl::Create(disable_ligatures, linespace_factor,
+  RendererImpl(const ComPtr<ID3D11Device2> &d3d_device, bool disable_ligatures,
+               float linespace_factor, uint32_t monitor_dpi,
+               const HighlightAttribute *defaultHL)
+      : _d3d_device(d3d_device),
+        _dwrite(DWriteImpl::Create(disable_ligatures, linespace_factor,
                                    monitor_dpi)),
         _defaultHL(defaultHL) {
     this->SetFont(DEFAULT_FONT, DEFAULT_FONT_SIZE);
+  }
+
+  void SetTarget(const ComPtr<IDXGISurface2> &backbuffer) {
+    _dxgi_backbuffer = backbuffer;
   }
 
   std::tuple<float, float> FontSize() const {
@@ -627,10 +635,9 @@ public:
     this->DrawBackgroundRect(rect, hl);
   }
 
-  std::tuple<int, int> StartDraw(ID3D11Device2 *device,
-                                 IDXGISurface2 *dxgi_backbuffer) {
+  std::tuple<int, int> StartDraw() {
     if (!_device) {
-      _device = DeviceImpl::Create(device);
+      _device = DeviceImpl::Create(_d3d_device.Get());
     }
 
     constexpr D2D1_BITMAP_PROPERTIES1 target_bitmap_properties{
@@ -642,7 +649,7 @@ public:
             D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW};
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> d2d_target_bitmap;
     WIN_CHECK(_device->_d2d_context->CreateBitmapFromDxgiSurface(
-        dxgi_backbuffer, &target_bitmap_properties, &d2d_target_bitmap));
+        _dxgi_backbuffer.Get(), &target_bitmap_properties, &d2d_target_bitmap));
     _device->_d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 
     if (!this->_draw_active) {
@@ -834,12 +841,17 @@ HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context,
 ///
 /// Renderer
 ///
-Renderer::Renderer(bool disable_ligatures, float linespace_factor,
-                   uint32_t monitor_dpi, const HighlightAttribute *defaultHL)
-    : _impl(new RendererImpl(disable_ligatures, linespace_factor, monitor_dpi,
-                             defaultHL)) {}
+Renderer::Renderer(ID3D11Device2 *device, bool disable_ligatures,
+                   float linespace_factor, uint32_t monitor_dpi,
+                   const HighlightAttribute *defaultHL)
+    : _impl(new RendererImpl(device, disable_ligatures, linespace_factor,
+                             monitor_dpi, defaultHL)) {}
 
 Renderer::~Renderer() { delete _impl; }
+
+void Renderer::SetTarget(IDXGISurface2 *backbuffer) {
+  _impl->SetTarget(backbuffer);
+}
 
 std::tuple<float, float> Renderer::FontSize() const {
   return _impl->FontSize();
@@ -865,9 +877,6 @@ void Renderer::DrawBackgroundRect(int rows, int cols,
   _impl->DrawBackgroundRect(rows, cols, hl);
 }
 
-std::tuple<int, int> Renderer::StartDraw(ID3D11Device2 *device,
-                                         IDXGISurface2 *backbuffer) {
-  return _impl->StartDraw(device, backbuffer);
-}
+std::tuple<int, int> Renderer::StartDraw() { return _impl->StartDraw(); }
 
 void Renderer::FinishDraw() { _impl->FinishDraw(); }

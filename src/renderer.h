@@ -7,15 +7,16 @@ class Renderer : public NvimRenderer {
   class RendererImpl *_impl = nullptr;
 
 public:
-  Renderer(bool disable_ligatures, float linespace_factor, uint32_t monitor_dpi,
+  Renderer(struct ID3D11Device2 *device, bool disable_ligatures,
+           float linespace_factor, uint32_t monitor_dpi,
            const HighlightAttribute *defaultHL);
   ~Renderer();
+  void SetTarget(struct IDXGISurface2 *backbuffer);
   // font size
   void SetFont(std::string_view font, float size) override;
   std::tuple<float, float> FontSize() const override;
   // render
-  std::tuple<int, int> StartDraw(struct ID3D11Device2 *device,
-                                 struct IDXGISurface2 *backbuffer) override;
+  std::tuple<int, int> StartDraw() override;
   void FinishDraw() override;
   void DrawBackgroundRect(int rows, int cols,
                           const HighlightAttribute *hl) override;

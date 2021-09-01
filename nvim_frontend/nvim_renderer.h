@@ -16,7 +16,6 @@ public:
   virtual void DrawCursor(const NvimGrid *grid) = 0;
   virtual void DrawBorderRectangles(const NvimGrid *grid, int width,
                                     int height) = 0;
-  virtual std::tuple<int, int> StartDraw(struct ID3D11Device2 *device,
-                                         struct IDXGISurface2 *backbuffer) = 0;
+  virtual std::tuple<int, int> StartDraw() = 0;
   virtual void FinishDraw() = 0;
 };

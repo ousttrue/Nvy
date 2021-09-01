@@ -9,10 +9,15 @@ class parser;
 struct NvimRedraw {
   bool _ui_busy = false;
 
-  void Dispatch(class NvimGrid *grid, class Renderer *renderer,
+  void Dispatch(struct ID3D11Device2 *device, struct IDXGISurface2 *target,
+                class NvimGrid *grid, class Renderer *renderer,
                 const msgpackpp::parser &params);
   static std::tuple<std::string_view, float>
   ParseGUIFont(std::string_view gui_font);
+
+  bool _sizing = false;
+  bool Sizing() const { return _sizing; }
+  void SetSizing() { _sizing = true; }
 
 private:
   void SetGuiOptions(class Renderer *renderer,

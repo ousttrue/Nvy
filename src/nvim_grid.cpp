@@ -11,23 +11,25 @@ NvimGrid::NvimGrid() {
 
 NvimGrid::~NvimGrid() {}
 
-void NvimGrid::RowsCols(int rows, int cols) {
+bool NvimGrid::RowsCols(int rows, int cols) {
   GridSize size{rows, cols};
-  if (size != _size) {
-    _size = size;
-
-    auto count = Count();
-    _grid_chars.resize(count);
-    // Initialize all grid character to a space. An empty
-    // grid cell is equivalent to a space in a text layout
-    std::fill(_grid_chars.begin(), _grid_chars.end(), L' ');
-
-    _grid_cell_properties.resize(count);
-
-    for (auto &callback : _sizeCallbacks) {
-      callback(size);
-    }
+  if (size == _size) {
+    return false;
   }
+  _size = size;
+
+  auto count = Count();
+  _grid_chars.resize(count);
+  // Initialize all grid character to a space. An empty
+  // grid cell is equivalent to a space in a text layout
+  std::fill(_grid_chars.begin(), _grid_chars.end(), L' ');
+
+  _grid_cell_properties.resize(count);
+
+  for (auto &callback : _sizeCallbacks) {
+    callback(size);
+  }
+  return true;
 }
 
 void NvimGrid::LineCopy(int left, int right, int src_row, int dst_row) {

@@ -1,14 +1,13 @@
 #include "renderer.h"
 #include "dx_helper.h"
 #include "nvim_grid.h"
-#include "renderer/d3d.h"
-#include "renderer/swapchain.h"
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
 #include <d3d11_4.h>
 #include <dwmapi.h>
 #include <dwrite_3.h>
+#include <dxgi1_2.h>
 #include <shellscalingapi.h>
 #include <tuple>
 #include <vector>
@@ -409,20 +408,13 @@ static UINT GetMonitorDpi(HWND hwnd) {
 }
 
 class RendererImpl {
-  std::unique_ptr<class D3D> _d3d;
   std::unique_ptr<class DeviceImpl> _device;
-  std::unique_ptr<class Swapchain> _swapchain;
   std::unique_ptr<class DWriteImpl> _dwrite;
-  Microsoft::WRL::ComPtr<ID2D1Bitmap1> _d2d_target_bitmap;
 
   HWND _hwnd = nullptr;
   bool _draw_active = false;
 
   const HighlightAttribute *_defaultHL = nullptr;
-
-  PixelSize _pixel_size = {0};
-  GridSize _grid_size = {};
-  on_rows_cols_t _on_rows_cols;
 
 public:
   RendererImpl(HWND hwnd, bool disable_ligatures, float linespace_factor,
@@ -431,87 +423,18 @@ public:
                                    GetMonitorDpi(hwnd))),
         _defaultHL(defaultHL) {
     this->_hwnd = hwnd;
-    this->HandleDeviceLost();
-  }
-
-  void InitializeWindowDependentResources() {
-    if (this->_swapchain) {
-      uint32_t w, h;
-      std::tie(w, h) = this->_swapchain->GetSize();
-      if (_pixel_size.width == w && _pixel_size.height == h) {
-        // not resized. use same bitmap
-        return;
-      }
-
-      _d2d_target_bitmap = nullptr;
-      HRESULT hr =
-          this->_swapchain->Resize(_pixel_size.width, _pixel_size.height);
-      if (hr == DXGI_ERROR_DEVICE_REMOVED) {
-        this->HandleDeviceLost();
-      }
-    } else {
-      this->_swapchain = Swapchain::Create(_d3d->Device(), _hwnd);
-    }
-
-    auto dxgi_backbuffer = _swapchain->GetBackbuffer();
-
-    constexpr D2D1_BITMAP_PROPERTIES1 target_bitmap_properties{
-        .pixelFormat = D2D1_PIXEL_FORMAT{.format = DXGI_FORMAT_B8G8R8A8_UNORM,
-                                         .alphaMode = D2D1_ALPHA_MODE_IGNORE},
-        .dpiX = DEFAULT_DPI,
-        .dpiY = DEFAULT_DPI,
-        .bitmapOptions =
-            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW};
-    WIN_CHECK(_device->_d2d_context->CreateBitmapFromDxgiSurface(
-        dxgi_backbuffer.Get(), &target_bitmap_properties,
-        &this->_d2d_target_bitmap));
-    _device->_d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
-  }
-
-  void HandleDeviceLost() {
-    _device.reset();
-    _swapchain.reset();
-    _d2d_target_bitmap.Reset();
-
-    _d3d = D3D::Create();
-    _device = DeviceImpl::Create(_d3d->Device());
     this->SetFont(DEFAULT_FONT, DEFAULT_FONT_SIZE);
   }
 
-  void Resize(uint32_t width, uint32_t height) {
-    _pixel_size.width = width;
-    _pixel_size.height = height;
-    UpdateSize();
-  }
-
-  PixelSize Size() const { return _pixel_size; }
-
-  void UpdateSize() {
-    auto fontSize = FontSize();
-    auto gridSize = GridSize::FromWindowSize(
-        _pixel_size.width, _pixel_size.height, fontSize.width, fontSize.height);
-    SetGridSize(gridSize.rows, gridSize.cols);
-  }
-
-  D2D1_SIZE_U FontSize() const {
+  std::tuple<float, float> FontSize() const {
     return {
-        .width = static_cast<UINT>(_dwrite->_font_width),
-        .height = static_cast<UINT>(_dwrite->_font_height),
+        _dwrite->_font_width,
+        _dwrite->_font_height,
     };
   }
 
   void SetFont(std::string_view font_string, float font_size) {
     _dwrite->UpdateFont(font_size, font_string);
-    UpdateSize();
-  }
-
-  void SetGridSize(int rows, int cols) {
-    if (rows == _grid_size.rows && cols == _grid_size.cols) {
-      return;
-    }
-    _grid_size.rows = rows;
-    _grid_size.cols = cols;
-    _on_rows_cols(_grid_size.rows, _grid_size.cols);
   }
 
   void ApplyHighlightAttributes(IDWriteTextLayout *text_layout, int start,
@@ -686,25 +609,28 @@ public:
     }
   }
 
-  void DrawBorderRectangles(const NvimGrid *grid) {
+  void DrawBorderRectangles(const NvimGrid *grid, int width, int height) {
+
+    // auto size = _d2d_target_bitmap->GetPixelSize();
+    // auto width = size.width;
+    // auto height = size.height;
+
     float left_border = _dwrite->_font_width * grid->Cols();
     float top_border = _dwrite->_font_height * grid->Rows();
 
-    if (left_border != static_cast<float>(this->_pixel_size.width)) {
-      D2D1_RECT_F vertical_rect{
-          .left = left_border,
-          .top = 0.0f,
-          .right = static_cast<float>(this->_pixel_size.width),
-          .bottom = static_cast<float>(this->_pixel_size.height)};
+    if (left_border != static_cast<float>(width)) {
+      D2D1_RECT_F vertical_rect{.left = left_border,
+                                .top = 0.0f,
+                                .right = static_cast<float>(width),
+                                .bottom = static_cast<float>(height)};
       this->DrawBackgroundRect(vertical_rect, &grid->hl(0));
     }
 
-    if (top_border != static_cast<float>(this->_pixel_size.height)) {
-      D2D1_RECT_F horizontal_rect{
-          .left = 0.0f,
-          .top = top_border,
-          .right = static_cast<float>(this->_pixel_size.width),
-          .bottom = static_cast<float>(this->_pixel_size.height)};
+    if (top_border != static_cast<float>(height)) {
+      D2D1_RECT_F horizontal_rect{.left = 0.0f,
+                                  .top = top_border,
+                                  .right = static_cast<float>(width),
+                                  .bottom = static_cast<float>(height)};
       this->DrawBackgroundRect(horizontal_rect, &grid->hl(0));
     }
   }
@@ -717,48 +643,47 @@ public:
     this->DrawBackgroundRect(rect, hl);
   }
 
-  void StartDraw() {
-    InitializeWindowDependentResources();
-    if (!this->_draw_active) {
-      _swapchain->Wait();
+  std::tuple<int, int> StartDraw(ID3D11Device2 *device,
+                                 IDXGISurface2 *dxgi_backbuffer) {
+    if (!_device) {
+      _device = DeviceImpl::Create(device);
+    }
 
-      _device->_d2d_context->SetTarget(this->_d2d_target_bitmap.Get());
+    constexpr D2D1_BITMAP_PROPERTIES1 target_bitmap_properties{
+        .pixelFormat = D2D1_PIXEL_FORMAT{.format = DXGI_FORMAT_B8G8R8A8_UNORM,
+                                         .alphaMode = D2D1_ALPHA_MODE_IGNORE},
+        .dpiX = DEFAULT_DPI,
+        .dpiY = DEFAULT_DPI,
+        .bitmapOptions =
+            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW};
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> d2d_target_bitmap;
+    WIN_CHECK(_device->_d2d_context->CreateBitmapFromDxgiSurface(
+        dxgi_backbuffer, &target_bitmap_properties, &d2d_target_bitmap));
+    _device->_d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+
+    if (!this->_draw_active) {
+      // _swapchain->Wait();
+
+      _device->_d2d_context->SetTarget(d2d_target_bitmap.Get());
       _device->_d2d_context->BeginDraw();
       _device->_d2d_context->SetTransform(D2D1::IdentityMatrix());
       this->_draw_active = true;
     }
+
+    auto size = d2d_target_bitmap->GetPixelSize();
+
+    return {size.width, size.height};
   }
 
   void FinishDraw() {
     _device->_d2d_context->EndDraw();
-
-    auto hr = _swapchain->PresentCopyFrontToBack(_d3d->Context());
-
-    this->_draw_active = false;
-
-    // clear render target
-    ID3D11RenderTargetView *null_views[] = {nullptr};
-    _d3d->Context()->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
-                                        nullptr);
     _device->_d2d_context->SetTarget(nullptr);
-    _d3d->Context()->Flush();
-
-    if (hr == DXGI_ERROR_DEVICE_REMOVED) {
-      this->HandleDeviceLost();
-    }
+    this->_draw_active = false;
   }
 
-  D2D1_SIZE_U SetDpiScale(float current_dpi) {
-    _dwrite->SetDpiScale(current_dpi);
-    return FontSize();
-  }
+  void SetDpiScale(float current_dpi) { _dwrite->SetDpiScale(current_dpi); }
 
-  D2D1_SIZE_U ResizeFont(float size) {
-    _dwrite->ResizeFont(size);
-    return FontSize();
-  }
-
-  void OnRowsCols(const on_rows_cols_t &callback) { _on_rows_cols = callback; }
+  void ResizeFont(float size) { _dwrite->ResizeFont(size); }
 
   HRESULT
   DrawGlyphRun(float baseline_origin_x, float baseline_origin_y,
@@ -932,12 +857,8 @@ Renderer::Renderer(void *hwnd, bool disable_ligatures, float linespace_factor,
 
 Renderer::~Renderer() { delete _impl; }
 
-PixelSize Renderer::FontSize() const {
-  return {_impl->FontSize().width, _impl->FontSize().height};
-}
-
-void Renderer::Resize(uint32_t width, uint32_t height) {
-  _impl->Resize(width, height);
+std::tuple<float, float> Renderer::FontSize() const {
+  return _impl->FontSize();
 }
 
 void Renderer::DrawGridLine(const NvimGrid *grid, int row) {
@@ -946,8 +867,9 @@ void Renderer::DrawGridLine(const NvimGrid *grid, int row) {
 
 void Renderer::DrawCursor(const NvimGrid *grid) { _impl->DrawCursor(grid); }
 
-void Renderer::DrawBorderRectangles(const NvimGrid *grid) {
-  _impl->DrawBorderRectangles(grid);
+void Renderer::DrawBorderRectangles(const NvimGrid *grid, int width,
+                                    int height) {
+  _impl->DrawBorderRectangles(grid, width, height);
 }
 
 void Renderer::SetFont(std::string_view font, float size) {
@@ -959,10 +881,9 @@ void Renderer::DrawBackgroundRect(int rows, int cols,
   _impl->DrawBackgroundRect(rows, cols, hl);
 }
 
-void Renderer::StartDraw() { _impl->StartDraw(); }
+std::tuple<int, int> Renderer::StartDraw(ID3D11Device2 *device,
+                                    IDXGISurface2 *backbuffer) {
+  return _impl->StartDraw(device, backbuffer);
+}
 
 void Renderer::FinishDraw() { _impl->FinishDraw(); }
-
-void Renderer::OnRowsCols(const on_rows_cols_t &callback) {
-  _impl->OnRowsCols(callback);
-}

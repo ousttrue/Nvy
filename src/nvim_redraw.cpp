@@ -17,9 +17,10 @@ NvimRedraw::ParseGUIFont(std::string_view guifont) {
   return {guifont.substr(0, size_str), font_size};
 }
 
-void NvimRedraw::Dispatch(NvimGrid *grid, Renderer *renderer,
+void NvimRedraw::Dispatch(ID3D11Device2 *device, IDXGISurface2 *target,
+                          NvimGrid *grid, Renderer *renderer,
                           const msgpackpp::parser &params) {
-  renderer->StartDraw();
+  auto [w, h] = renderer->StartDraw(device, target);
 
   auto redraw_commands_length = params.count();
   auto redraw_command_arr = params.first_array_item().value;
@@ -70,7 +71,7 @@ void NvimRedraw::Dispatch(NvimGrid *grid, Renderer *renderer,
       if (!this->_ui_busy) {
         renderer->DrawCursor(grid);
       }
-      renderer->DrawBorderRectangles(grid);
+      renderer->DrawBorderRectangles(grid, w, h);
       renderer->FinishDraw();
     } else {
       // PLOGD << "unknown:" << redraw_command_name;
@@ -99,6 +100,7 @@ void NvimRedraw::UpdateGridSize(NvimGrid *grid,
   int grid_cols = grid_resize_params[1].get_number<int>();
   int grid_rows = grid_resize_params[2].get_number<int>();
   grid->RowsCols(grid_rows, grid_cols);
+  _sizing = false;
 }
 
 // ["grid_cursor_goto",[1,0,4]]

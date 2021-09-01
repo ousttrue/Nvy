@@ -2,6 +2,8 @@
 #include "nvim_grid.h"
 #include "nvim_redraw.h"
 #include "renderer.h"
+#include "renderer/d3d.h"
+#include "renderer/swapchain.h"
 #include "win32window.h"
 #include <Windows.h>
 #include <plog/Appenders/DebugOutputAppender.h>
@@ -90,12 +92,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                    [hwnd]() { PostMessage(hwnd, WM_CLOSE, 0, 0); })) {
     return 3;
   }
-  grid.OnSizeChanged(
-      [&nvim](const GridSize &size) { nvim.ResizeGrid(size.rows, size.cols); });
-  renderer.OnRowsCols([&grid](int rows, int cols) {
-    PLOGD << "renderer: [" << cols << ", " << rows << "]";
-    grid.RowsCols(rows, cols);
-  });
+  // grid.OnSizeChanged(
+  //     [&nvim](const GridSize &size) { nvim.ResizeGrid(size.rows, size.cols);
+  //     });
 
   // setfont
   auto guifont = nvim.Initialize();
@@ -107,9 +106,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   if (cmd.start_maximized) {
     window.ToggleFullscreen();
   } else if (cmd.rows != 0 && cmd.cols != 0) {
-    auto fontSize = renderer.FontSize();
-    auto requested_width = static_cast<int>(fontSize.width * cmd.cols);
-    auto requested_height = static_cast<int>(fontSize.height * cmd.rows);
+    auto [font_width, font_height] = renderer.FontSize();
+    auto requested_width = static_cast<int>(ceilf(font_width) * cmd.cols);
+    auto requested_height = static_cast<int>(ceilf(font_height) * cmd.rows);
 
     // Adjust size to include title bar
     RECT rect = {0, 0, requested_width, requested_height};
@@ -119,35 +118,80 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   UpdateWindow(hwnd);
   ShowWindow(hwnd, SW_SHOWDEFAULT);
 
+  auto d3d = D3D::Create();
+  auto swapchain = Swapchain::Create(d3d->Device(), hwnd);
+
   window._on_input = [&nvim](const InputEvent &input) { nvim.Input(input); };
   window._on_mouse = [&nvim, &renderer](const MouseEvent &mouse) {
-    auto fontSize = renderer.FontSize();
-    auto grid_pos = GridPoint::FromCursor(mouse.x, mouse.y, fontSize.width,
-                                          fontSize.height);
+    auto [font_width, font_height] = renderer.FontSize();
+    auto grid_pos = GridPoint::FromCursor(mouse.x, mouse.y, ceilf(font_width),
+                                          ceilf(font_height));
     auto copy = mouse;
     copy.x = grid_pos.col;
     copy.y = grid_pos.row;
     nvim.Mouse(copy);
   };
 
-  // Attach the renderer now that the window size is
-  // determined
-  auto [w, h] = window.Size();
-  renderer.Resize(w, h);
-  auto fontSize = renderer.FontSize();
-  auto gridSize =
-      GridSize::FromWindowSize(w, h, fontSize.width, fontSize.height);
+  // Attach the renderer now that the window size is determined
+  auto [window_width, window_height] = window.Size();
+  auto [font_width, font_height] = renderer.FontSize();
+  auto gridSize = GridSize::FromWindowSize(
+      window_width, window_height, ceilf(font_width), ceilf(font_height));
 
   NvimRedraw redraw;
   nvim.AttachUI(
-      [&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
-        redraw.Dispatch(&grid, &renderer, msg);
+      [&redraw, &renderer, &grid, &window, &d3d, &swapchain,
+       &nvim](const msgpackpp::parser &msg) {
+        auto [window_width, window_height] = window.Size();
+
+        // if (this->_swapchain) {
+        uint32_t w, h;
+        std::tie(w, h) = swapchain->GetSize();
+        if (window_width != w && window_height != h) {
+
+          HRESULT hr = swapchain->Resize(window_width, window_height);
+          if (hr == DXGI_ERROR_DEVICE_REMOVED) {
+            assert(false);
+          }
+          // } else {
+          //   this->_swapchain = Swapchain::Create(_d3d->Device(), _hwnd);
+          // }
+        }
+
+        auto dxgi_backbuffer = swapchain->GetBackbuffer();
+
+        redraw.Dispatch(d3d->Device().Get(), dxgi_backbuffer.Get(), &grid,
+                        &renderer, msg);
+
+        auto hr = swapchain->PresentCopyFrontToBack(d3d->Context());
+
+        // clear render target
+        ID3D11RenderTargetView *null_views[] = {nullptr};
+        d3d->Context()->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
+                                           nullptr);
+        d3d->Context()->Flush();
+
+        if (hr == DXGI_ERROR_DEVICE_REMOVED) {
+          assert(false);
+          // this->HandleDeviceLost();
+        }
       },
       gridSize.rows, gridSize.cols);
 
   while (window.Loop()) {
-    auto [w, h] = window.Size();
-    renderer.Resize(w, h);
+    auto [window_width, window_height] = window.Size();
+    auto [font_width, font_height] = renderer.FontSize();
+    auto gridSize = GridSize::FromWindowSize(
+        window_width, window_height, ceilf(font_width), ceilf(font_height));
+    if (redraw.Sizing()) {
+      auto a = 0;
+    } else {
+      if (grid.Rows() != gridSize.rows || grid.Cols() != gridSize.cols) {
+        redraw.SetSizing();
+        nvim.ResizeGrid(gridSize.rows, gridSize.cols);
+      }
+    }
+
     nvim.Process();
   }
 

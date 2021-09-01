@@ -35,10 +35,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
                    [hwnd]() { PostMessage(hwnd, WM_CLOSE, 0, 0); })) {
     return 3;
   }
-  auto guifont = nvim.Initialize();
+  auto [font, size] = nvim.Initialize();
 
   // setup renderer
-  auto [font, size] = NvimRedraw::ParseGUIFont(guifont);
   NvimGrid grid;
   Renderer renderer(cmd.disable_ligatures, cmd.linespace_factor,
                     window.GetMonitorDpi(), &grid.hl(0));

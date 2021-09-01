@@ -1,6 +1,6 @@
 #include "nvim_frontend.h"
 #include "nvim_pipe.h"
-// #include "win32window.h"
+#include "nvim_redraw.h"
 #include <asio.hpp>
 #include <msgpackpp/msgpackpp.h>
 #include <msgpackpp/rpc.h>
@@ -98,7 +98,9 @@ class NvimFrontendImpl {
   msgpackpp::rpc_base<msgpackpp::WindowsPipeTransport> _rpc;
 
 public:
-  bool Launch(const wchar_t *command, const on_terminated_t &callback) { return _pipe.Launch(command, callback); }
+  bool Launch(const wchar_t *command, const on_terminated_t &callback) {
+    return _pipe.Launch(command, callback);
+  }
 
   std::string Initialize() {
 
@@ -256,7 +258,8 @@ public:
 
 NvimFrontend::NvimFrontend() : _impl(new NvimFrontendImpl) {}
 NvimFrontend::~NvimFrontend() { delete _impl; }
-bool NvimFrontend::Launch(const wchar_t *command, const on_terminated_t &callback) {
+bool NvimFrontend::Launch(const wchar_t *command,
+                          const on_terminated_t &callback) {
   return _impl->Launch(command, callback);
 }
 void NvimFrontend::AttachUI(const on_redraw_t &callback, int rows, int cols) {
@@ -266,7 +269,10 @@ void NvimFrontend::ResizeGrid(int rows, int cols) {
   _impl->SendResize(rows, cols);
 }
 
-std::string NvimFrontend::Initialize() { return _impl->Initialize(); }
+std::tuple<std::string_view, float> NvimFrontend::Initialize() {
+  auto guifont = _impl->Initialize();
+  return NvimRedraw::ParseGUIFont(guifont);
+}
 void NvimFrontend::Process() { _impl->Process(); }
 void NvimFrontend::Input(const InputEvent &e) {
   switch (e.type) {

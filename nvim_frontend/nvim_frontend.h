@@ -17,7 +17,7 @@ public:
   // nvim --embed
   bool Launch(const wchar_t *command, const on_terminated_t &callback);
   // return guifont
-  std::string Initialize();
+  std::tuple<std::string_view, float> Initialize();
 
   void AttachUI(const on_redraw_t &callback, int rows, int cols);
   void ResizeGrid(int rows, int cols);

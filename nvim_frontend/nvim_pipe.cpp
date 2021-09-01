@@ -1,5 +1,5 @@
 #include "nvim_pipe.h"
-#include "window_messages.h"
+// #include "window_messages.h"
 #include <Windows.h>
 #include <msgpackpp/msgpackpp.h>
 #include <plog/Log.h>
@@ -49,7 +49,7 @@ bool NvimPipe::Launch(const wchar_t *command_line,
     return false;
   }
 
-  STARTUPINFO startup_info{.cb = sizeof(STARTUPINFO),
+  STARTUPINFOW startup_info{.cb = sizeof(STARTUPINFO),
                            .dwFlags = STARTF_USESTDHANDLES,
                            .hStdInput = _stdin_read,
                            .hStdOutput = _stdout_write,

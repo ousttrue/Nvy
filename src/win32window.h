@@ -1,5 +1,5 @@
-#include "windowevent.h"
 #include <functional>
+#include <nvim_input.h>
 #include <stdint.h>
 #include <string>
 
@@ -29,5 +29,5 @@ public:
   void ToggleFullscreen();
   void Resize(int w, int h);
   std::tuple<int, int> Size() const;
-  uint32_t GetMonitorDpi()const;
+  uint32_t GetMonitorDpi() const;
 };

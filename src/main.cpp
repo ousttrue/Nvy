@@ -1,7 +1,7 @@
 #include "commandline.h"
-#include "nvim_frontend.h"
-#include "nvim_grid.h"
-#include "nvim_redraw.h"
+#include <nvim_frontend.h>
+#include <nvim_grid.h>
+#include <nvim_redraw.h>
 #include "renderer.h"
 #include "renderer/d3d.h"
 #include "renderer/swapchain.h"
@@ -107,7 +107,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     // update swapchain size
     auto [w, h] = swapchain->GetSize();
-    if (window_width != w && window_height != h) {
+    if (window_width != w || window_height != h) {
       HRESULT hr = swapchain->Resize(window_width, window_height);
       if (hr == DXGI_ERROR_DEVICE_REMOVED) {
         assert(false);

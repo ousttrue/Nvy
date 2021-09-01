@@ -1,6 +1,6 @@
 #include "nvim_redraw.h"
 #include "nvim_grid.h"
-#include "renderer.h"
+#include "nvim_renderer.h"
 #include <Windows.h>
 #include <msgpackpp/msgpackpp.h>
 #include <plog/Log.h>
@@ -18,7 +18,7 @@ NvimRedraw::ParseGUIFont(std::string_view guifont) {
 }
 
 void NvimRedraw::Dispatch(ID3D11Device2 *device, IDXGISurface2 *target,
-                          NvimGrid *grid, Renderer *renderer,
+                          NvimGrid *grid, NvimRenderer *renderer,
                           const msgpackpp::parser &params) {
   auto [w, h] = renderer->StartDraw(device, target);
 
@@ -79,7 +79,7 @@ void NvimRedraw::Dispatch(ID3D11Device2 *device, IDXGISurface2 *target,
   }
 }
 
-void NvimRedraw::SetGuiOptions(Renderer *renderer,
+void NvimRedraw::SetGuiOptions(NvimRenderer *renderer,
                                const msgpackpp::parser &option_set) {
   uint64_t option_set_length = option_set.count();
 
@@ -213,7 +213,7 @@ void NvimRedraw::UpdateHighlightAttributes(
 
 // ["grid_line",[1,50,193,[[" ",1]]],[1,49,193,[["4",218],["%"],[" "],["
 // ",215,2],["2"],["9"],[":"],["0"]]]]
-void NvimRedraw::DrawGridLines(NvimGrid *grid, Renderer *renderer,
+void NvimRedraw::DrawGridLines(NvimGrid *grid, NvimRenderer *renderer,
                                const msgpackpp::parser &grid_lines) {
   int grid_size = grid->Count();
   size_t line_count = grid_lines.count();
@@ -293,7 +293,7 @@ void NvimRedraw::DrawGridLines(NvimGrid *grid, Renderer *renderer,
   }
 }
 
-void NvimRedraw::ScrollRegion(NvimGrid *grid, Renderer *renderer,
+void NvimRedraw::ScrollRegion(NvimGrid *grid, NvimRenderer *renderer,
                               const msgpackpp::parser &scroll_region) {
   PLOGD << scroll_region;
   auto scroll_region_params = scroll_region[1];

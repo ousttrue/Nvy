@@ -1,6 +1,6 @@
 #include "nvim_frontend.h"
 #include "nvim_pipe.h"
-#include "win32window.h"
+// #include "win32window.h"
 #include <asio.hpp>
 #include <msgpackpp/msgpackpp.h>
 #include <msgpackpp/rpc.h>

@@ -9,6 +9,7 @@ target_sources(
          "nvim_redraw.cpp"
          "nvim_grid.cpp"
          "renderer.cpp"
+         "renderer/d3d.cpp"
          "renderer/swapchain.cpp"
          "win32window.cpp")
 target_compile_definitions(${TARGET_NAME} PUBLIC UNICODE NOMINMAX

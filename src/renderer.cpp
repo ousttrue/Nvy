@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "dx_helper.h"
 #include "nvim_grid.h"
+#include "renderer/d3d.h"
 #include "renderer/swapchain.h"
 #include <algorithm>
 #include <assert.h>
@@ -349,9 +350,6 @@ public:
 
 class DeviceImpl {
 public:
-  ComPtr<ID3D11Device2> _d3d_device;
-  ComPtr<ID3D11DeviceContext2> _d3d_context;
-
   ComPtr<ID2D1Factory5> _d2d_factory;
   ComPtr<ID2D1Device4> _d2d_device;
   ComPtr<ID2D1DeviceContext4> _d2d_context;
@@ -362,40 +360,20 @@ public:
   ComPtr<GlyphRenderer> _glyph_renderer;
 
 public:
-  static std::unique_ptr<DeviceImpl> Create() {
-    uint32_t flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-#ifndef NDEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-    // Force DirectX 11.1
-    D3D_FEATURE_LEVEL d3d_feature_level;
-    ComPtr<ID3D11Device> temp_device;
-    ComPtr<ID3D11DeviceContext> temp_context;
-    D3D_FEATURE_LEVEL feature_levels[] = {
-        D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
-        D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_2,
-        D3D_FEATURE_LEVEL_9_1};
-    WIN_CHECK(D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, feature_levels,
-        ARRAYSIZE(feature_levels), D3D11_SDK_VERSION, &temp_device,
-        &d3d_feature_level, &temp_context));
+  static std::unique_ptr<DeviceImpl>
+  Create(const ComPtr<ID3D11Device2> &d3d_device) {
 
     auto p = std::unique_ptr<DeviceImpl>(new DeviceImpl);
-
-    WIN_CHECK(temp_device.As(&p->_d3d_device));
-    WIN_CHECK(temp_context.As(&p->_d3d_context));
 
     D2D1_FACTORY_OPTIONS options{};
 #ifndef NDEBUG
     options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
 #endif
-
     WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, options,
                                 p->_d2d_factory.ReleaseAndGetAddressOf()));
 
     ComPtr<IDXGIDevice3> dxgi_device;
-    WIN_CHECK(p->_d3d_device.As(&dxgi_device));
+    WIN_CHECK(d3d_device.As(&dxgi_device));
     WIN_CHECK(
         p->_d2d_factory->CreateDevice(dxgi_device.Get(), &p->_d2d_device));
     WIN_CHECK(p->_d2d_device->CreateDeviceContext(
@@ -431,6 +409,7 @@ static UINT GetMonitorDpi(HWND hwnd) {
 }
 
 class RendererImpl {
+  std::unique_ptr<class D3D> _d3d;
   std::unique_ptr<class DeviceImpl> _device;
   std::unique_ptr<class Swapchain> _swapchain;
   std::unique_ptr<class DWriteImpl> _dwrite;
@@ -471,7 +450,7 @@ public:
         this->HandleDeviceLost();
       }
     } else {
-      this->_swapchain = Swapchain::Create(_device->_d3d_device, _hwnd);
+      this->_swapchain = Swapchain::Create(_d3d->Device(), _hwnd);
     }
 
     auto dxgi_backbuffer = _swapchain->GetBackbuffer();
@@ -494,7 +473,8 @@ public:
     _swapchain.reset();
     _d2d_target_bitmap.Reset();
 
-    _device = DeviceImpl::Create();
+    _d3d = D3D::Create();
+    _device = DeviceImpl::Create(_d3d->Device());
     this->SetFont(DEFAULT_FONT, DEFAULT_FONT_SIZE);
   }
 
@@ -752,16 +732,16 @@ public:
   void FinishDraw() {
     _device->_d2d_context->EndDraw();
 
-    auto hr = _swapchain->PresentCopyFrontToBack(_device->_d3d_context);
+    auto hr = _swapchain->PresentCopyFrontToBack(_d3d->Context());
 
     this->_draw_active = false;
 
     // clear render target
     ID3D11RenderTargetView *null_views[] = {nullptr};
-    _device->_d3d_context->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
-                                              nullptr);
+    _d3d->Context()->OMSetRenderTargets(ARRAYSIZE(null_views), null_views,
+                                        nullptr);
     _device->_d2d_context->SetTarget(nullptr);
-    _device->_d3d_context->Flush();
+    _d3d->Context()->Flush();
 
     if (hr == DXGI_ERROR_DEVICE_REMOVED) {
       this->HandleDeviceLost();

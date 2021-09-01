@@ -109,11 +109,6 @@ public:
   ~NvimGrid();
   NvimGrid(const NvimGrid &) = delete;
   NvimGrid &operator=(const NvimGrid &) = delete;
-
-  void OnSizeChanged(const GridSizeChanged &callback) {
-    _sizeCallbacks.push_back(callback);
-  }
-
   int Rows() const { return _size.rows; }
   int Cols() const { return _size.cols; }
   int Count() const { return _size.cols * _size.rows; }

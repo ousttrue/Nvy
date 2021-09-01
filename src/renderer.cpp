@@ -1,7 +1,7 @@
 #include "renderer.h"
 #include "dx_helper.h"
 #include "nvim_grid.h"
-#include "swapchain.h"
+#include "renderer/swapchain.h"
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
@@ -417,7 +417,6 @@ public:
     return p;
   }
 };
-
 
 static UINT GetMonitorDpi(HWND hwnd) {
   RECT window_rect;

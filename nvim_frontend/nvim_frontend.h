@@ -1,4 +1,5 @@
 #pragma once
+#include "grid_size.h"
 #include "nvim_input.h"
 #include <functional>
 #include <string>
@@ -6,7 +7,6 @@
 namespace msgpackpp {
 class parser;
 }
-using on_redraw_t = std::function<void(const msgpackpp::parser &)>;
 using on_terminated_t = std::function<void()>;
 class NvimFrontend {
   class NvimFrontendImpl *_impl = nullptr;
@@ -19,10 +19,16 @@ public:
   // return guifont
   std::tuple<std::string_view, float> Initialize();
 
-  void AttachUI(const on_redraw_t &callback, int rows, int cols);
+  void AttachUI(class NvimRenderer *renderer, int rows, int cols);
   void ResizeGrid(int rows, int cols);
 
   void Process();
   void Input(const InputEvent &e);
   void Mouse(const MouseEvent &e);
+
+  GridSize GridSize() const;
+  bool Sizing() const;
+  void SetSizing();
+
+  const struct HighlightAttribute *DefaultAttribute() const;
 };

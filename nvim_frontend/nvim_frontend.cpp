@@ -1,4 +1,5 @@
 #include "nvim_frontend.h"
+#include "nvim_grid.h"
 #include "nvim_pipe.h"
 #include "nvim_redraw.h"
 #include <asio.hpp>
@@ -94,6 +95,8 @@ struct ThreadWork {
 
 class NvimFrontendImpl {
   NvimPipe _pipe;
+  NvimGrid _grid;
+  NvimRedraw _redraw;
   asio::io_context _context;
   msgpackpp::rpc_base<msgpackpp::WindowsPipeTransport> _rpc;
 
@@ -141,13 +144,13 @@ public:
     return guifont;
   }
 
-  void AttachUI(const on_redraw_t &callback, int rows, int cols) {
-    _rpc.add_proc(
-        "redraw",
-        [callback](const msgpackpp::parser &msg) -> std::vector<uint8_t> {
-          callback(msg);
-          return {};
-        });
+  void AttachUI(NvimRenderer *renderer, int rows, int cols) {
+    _rpc.add_proc("redraw",
+                  [self = this, renderer](
+                      const msgpackpp::parser &msg) -> std::vector<uint8_t> {
+                    self->_redraw.Dispatch(&self->_grid, renderer, msg);
+                    return {};
+                  });
 
     ThreadWork sync(_context);
 
@@ -254,6 +257,11 @@ public:
 
     _rpc.request_async("nvim_command", (const char *)file_command);
   }
+
+  GridSize GridSize() const { return _grid.Size(); }
+  bool Sizing() const { return _redraw.Sizing(); }
+  void SetSizing() { _redraw.SetSizing(); }
+  const HighlightAttribute *DefaultAttribute() const { return &_grid.hl(0); }
 };
 
 NvimFrontend::NvimFrontend() : _impl(new NvimFrontendImpl) {}
@@ -262,8 +270,8 @@ bool NvimFrontend::Launch(const wchar_t *command,
                           const on_terminated_t &callback) {
   return _impl->Launch(command, callback);
 }
-void NvimFrontend::AttachUI(const on_redraw_t &callback, int rows, int cols) {
-  _impl->AttachUI(callback, rows, cols);
+void NvimFrontend::AttachUI(NvimRenderer *renderer, int rows, int cols) {
+  _impl->AttachUI(renderer, rows, cols);
 }
 void NvimFrontend::ResizeGrid(int rows, int cols) {
   _impl->SendResize(rows, cols);
@@ -296,3 +304,10 @@ void NvimFrontend::Input(const InputEvent &e) {
 void NvimFrontend::Mouse(const MouseEvent &e) {
   _impl->SendMouseInput(e.button, e.action, e.y, e.x);
 }
+
+const HighlightAttribute *NvimFrontend::DefaultAttribute() const {
+  return _impl->DefaultAttribute();
+}
+GridSize NvimFrontend::GridSize() const { return _impl->GridSize(); }
+bool NvimFrontend::Sizing() const { return _impl->Sizing(); }
+void NvimFrontend::SetSizing() { return _impl->SetSizing(); }

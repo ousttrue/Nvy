@@ -5,8 +5,6 @@
 #include "win32window.h"
 #include <Windows.h>
 #include <nvim_frontend.h>
-#include <nvim_grid.h>
-#include <nvim_redraw.h>
 #include <plog/Appenders/DebugOutputAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Init.h>
@@ -42,9 +40,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   auto d3d = D3D::Create();
   auto swapchain = Swapchain::Create(d3d->Device(), hwnd);
 
-  NvimGrid grid;
   Renderer renderer(d3d->Device().Get(), cmd.disable_ligatures,
-                    cmd.linespace_factor, window.GetMonitorDpi(), &grid.hl(0));
+                    cmd.linespace_factor, window.GetMonitorDpi(),
+                    nvim.DefaultAttribute());
   renderer.SetFont(font, size);
 
   // initial window size
@@ -82,12 +80,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
       window_width, window_height, ceilf(font_width), ceilf(font_height));
 
   // nvim_attach_ui. start redraw message
-  NvimRedraw redraw;
-  nvim.AttachUI(
-      [&redraw, &renderer, &grid](const msgpackpp::parser &msg) {
-        redraw.Dispatch(&grid, &renderer, msg);
-      },
-      gridSize.rows, gridSize.cols);
+  nvim.AttachUI(&renderer, gridSize.rows, gridSize.cols);
 
   // main loop
   while (window.Loop()) {
@@ -106,24 +99,29 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     auto [font_width, font_height] = renderer.FontSize();
     auto gridSize = GridSize::FromWindowSize(
         window_width, window_height, ceilf(font_width), ceilf(font_height));
-    if (redraw.Sizing()) {
+    if (nvim.Sizing()) {
       auto a = 0;
     } else {
-      if (grid.Rows() != gridSize.rows || grid.Cols() != gridSize.cols) {
-        redraw.SetSizing();
+      if (nvim.GridSize() != gridSize) {
+        nvim.SetSizing();
         nvim.ResizeGrid(gridSize.rows, gridSize.cols);
       }
     }
 
-    // process nvim message
-    auto backbuffer = swapchain->GetBackbuffer();
-    renderer.SetTarget(backbuffer.Get());
-    nvim.Process();
-    renderer.SetTarget(nullptr);
-    auto hr = swapchain->PresentCopyFrontToBack(d3d->Context());
-    if (hr == DXGI_ERROR_DEVICE_REMOVED) {
-      assert(false);
-      // this->HandleDeviceLost();
+    {
+      // parepare render target
+      renderer.SetTarget(swapchain->GetBackbuffer().Get());
+      // process nvim message. may render
+      nvim.Process();
+      // release backbuffer reference
+      renderer.SetTarget(nullptr);
+
+      // present
+      auto hr = swapchain->PresentCopyFrontToBack(d3d->Context());
+      if (hr == DXGI_ERROR_DEVICE_REMOVED) {
+        assert(false);
+        // this->HandleDeviceLost();
+      }
     }
   }
 

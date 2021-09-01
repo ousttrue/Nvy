@@ -1,4 +1,5 @@
 #pragma once
+#include "grid_size.h"
 #include <functional>
 #include <list>
 #include <stdint.h>
@@ -68,33 +69,6 @@ struct CellProperty {
   bool is_wide_char;
 };
 
-struct GridPoint {
-  int row;
-  int col;
-
-  static GridPoint FromCursor(int x, int y, int font_width, int font_height) {
-    return GridPoint{.row = static_cast<int>(y / font_height),
-                     .col = static_cast<int>(x / font_width)};
-  }
-};
-
-struct GridSize {
-  int rows;
-  int cols;
-
-  bool operator==(const GridSize &rhs) const {
-    return rows == rhs.rows && cols == rhs.cols;
-  }
-
-  static GridSize FromWindowSize(int window_width, int window_height,
-                                 int font_width, int font_height) {
-    return GridSize{.rows = static_cast<int>(window_height / font_height),
-                    .cols = static_cast<int>(window_width / font_width)};
-  }
-};
-using GridSizeChanged = std::function<void(const GridSize &)>;
-constexpr int MAX_CURSOR_MODE_INFOS = 64;
-
 class NvimGrid {
   GridSize _size = {};
   std::vector<wchar_t> _grid_chars;
@@ -111,6 +85,7 @@ public:
   NvimGrid &operator=(const NvimGrid &) = delete;
   int Rows() const { return _size.rows; }
   int Cols() const { return _size.cols; }
+  GridSize Size() const { return _size; }
   int Count() const { return _size.cols * _size.rows; }
   wchar_t *Chars() { return _grid_chars.data(); }
   const wchar_t *Chars() const { return _grid_chars.data(); }

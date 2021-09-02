@@ -1,12 +1,11 @@
 #include "renderer.h"
-#include "dx_helper.h"
-#include "nvim_grid.h"
 #include <algorithm>
 #include <assert.h>
 #include <d2d1_3.h>
 #include <d3d11_4.h>
 #include <dwrite_3.h>
 #include <dxgi1_2.h>
+#include <nvim_grid.h>
 #include <tuple>
 #include <vector>
 #include <wrl/client.h>
@@ -231,7 +230,10 @@ public:
     this->_last_requested_font_size = font_size;
 
     ComPtr<IDWriteFontCollection> font_collection;
-    WIN_CHECK(this->_dwrite_factory->GetSystemFontCollection(&font_collection));
+    auto hr = this->_dwrite_factory->GetSystemFontCollection(&font_collection);
+    if (FAILED(hr)) {
+      return;
+    }
 
     int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string.data(),
                                       font_string.size(), 0, 0);
@@ -253,26 +255,45 @@ public:
     }
 
     ComPtr<IDWriteFontFamily> font_family;
-    WIN_CHECK(font_collection->GetFontFamily(index, &font_family));
+    hr = font_collection->GetFontFamily(index, &font_family);
+    if (FAILED(hr)) {
+      return;
+    }
 
     ComPtr<IDWriteFont> write_font;
-    WIN_CHECK(font_family->GetFirstMatchingFont(
+    hr = font_family->GetFirstMatchingFont(
         DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-        DWRITE_FONT_STYLE_NORMAL, &write_font));
+        DWRITE_FONT_STYLE_NORMAL, &write_font);
+    if (FAILED(hr)) {
+      return;
+    }
 
     ComPtr<IDWriteFontFace> font_face;
-    WIN_CHECK(write_font->CreateFontFace(&font_face));
-    WIN_CHECK(font_face->QueryInterface<IDWriteFontFace1>(&this->_font_face));
+    hr = write_font->CreateFontFace(&font_face);
+    if (FAILED(hr)) {
+      return;
+    }
+
+    hr = font_face->QueryInterface<IDWriteFontFace1>(&this->_font_face);
+    if (FAILED(hr)) {
+      return;
+    }
 
     this->_font_face->GetMetrics(&this->_font_metrics);
 
     uint16_t glyph_index;
     constexpr uint32_t codepoint = L'A';
-    WIN_CHECK(this->_font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
+    hr = this->_font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index);
+    if (FAILED(hr)) {
+      return;
+    }
 
     int32_t glyph_advance_in_em;
-    WIN_CHECK(this->_font_face->GetDesignGlyphAdvances(1, &glyph_index,
-                                                       &glyph_advance_in_em));
+    hr = this->_font_face->GetDesignGlyphAdvances(1, &glyph_index,
+                                                  &glyph_advance_in_em);
+    if (FAILED(hr)) {
+      return;
+    }
 
     float desired_height =
         font_size * this->_dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
@@ -297,39 +318,64 @@ public:
     this->_font_height = this->_font_ascent + this->_font_descent;
     this->_font_height *= this->_linespace_factor;
 
-    WIN_CHECK(this->_dwrite_factory->CreateTextFormat(
+    hr = this->_dwrite_factory->CreateTextFormat(
         this->_font, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, this->_font_size,
-        L"en-us", &this->_dwrite_text_format));
+        L"en-us", &this->_dwrite_text_format);
+    if (FAILED(hr)) {
+      return;
+    }
 
-    WIN_CHECK(this->_dwrite_text_format->SetLineSpacing(
+    hr = this->_dwrite_text_format->SetLineSpacing(
         DWRITE_LINE_SPACING_METHOD_UNIFORM, this->_font_height,
-        this->_font_ascent * this->_linespace_factor));
-    WIN_CHECK(this->_dwrite_text_format->SetParagraphAlignment(
-        DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
-    WIN_CHECK(this->_dwrite_text_format->SetWordWrapping(
-        DWRITE_WORD_WRAPPING_NO_WRAP));
+        this->_font_ascent * this->_linespace_factor);
+    if (FAILED(hr)) {
+      return;
+    }
+
+    hr = this->_dwrite_text_format->SetParagraphAlignment(
+        DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+    if (FAILED(hr)) {
+      return;
+    }
+
+    hr = this->_dwrite_text_format->SetWordWrapping(
+        DWRITE_WORD_WRAPPING_NO_WRAP);
+    if (FAILED(hr)) {
+      return;
+    }
   }
 
   float GetTextWidth(const wchar_t *text, uint32_t length) {
     // Create dummy text format to hit test the width of the font
     ComPtr<IDWriteTextLayout> test_text_layout;
-    WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
+    auto hr = this->_dwrite_factory->CreateTextLayout(
         text, length, this->_dwrite_text_format.Get(), 0.0f, 0.0f,
-        &test_text_layout));
+        &test_text_layout);
+    if (FAILED(hr)) {
+      return {};
+    }
 
     DWRITE_HIT_TEST_METRICS metrics;
     float _;
-    WIN_CHECK(test_text_layout->HitTestTextPosition(0, 0, &_, &_, &metrics));
+    hr = test_text_layout->HitTestTextPosition(0, 0, &_, &_, &metrics);
+    if (FAILED(hr)) {
+      return {};
+    }
+
     return metrics.width;
   }
 
   ComPtr<IDWriteTextLayout1>
   GetTextLayout(const D2D1_RECT_F &rect, const wchar_t *text, uint32_t length) {
     ComPtr<IDWriteTextLayout> temp_text_layout;
-    WIN_CHECK(this->_dwrite_factory->CreateTextLayout(
+    auto hr = this->_dwrite_factory->CreateTextLayout(
         text, length, this->_dwrite_text_format.Get(), rect.right - rect.left,
-        rect.bottom - rect.top, &temp_text_layout));
+        rect.bottom - rect.top, &temp_text_layout);
+    if (FAILED(hr)) {
+      return {};
+    }
+
     ComPtr<IDWriteTextLayout1> text_layout;
     temp_text_layout.As(&text_layout);
     return text_layout;
@@ -366,27 +412,52 @@ public:
 #ifndef NDEBUG
     options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
 #endif
-    WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, options,
-                                p->_d2d_factory.ReleaseAndGetAddressOf()));
+    auto hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, options,
+                                p->_d2d_factory.ReleaseAndGetAddressOf());
+    if (FAILED(hr)) {
+      return {};
+    }
 
     ComPtr<IDXGIDevice3> dxgi_device;
-    WIN_CHECK(d3d_device.As(&dxgi_device));
-    WIN_CHECK(
-        p->_d2d_factory->CreateDevice(dxgi_device.Get(), &p->_d2d_device));
-    WIN_CHECK(p->_d2d_device->CreateDeviceContext(
+    hr = d3d_device.As(&dxgi_device);
+    if (FAILED(hr)) {
+      return {};
+    }
+
+    hr = p->_d2d_factory->CreateDevice(dxgi_device.Get(), &p->_d2d_device);
+    if (FAILED(hr)) {
+      return {};
+    }
+
+    hr = p->_d2d_device->CreateDeviceContext(
         D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS,
-        &p->_d2d_context));
+        &p->_d2d_context);
+    if (FAILED(hr)) {
+      return {};
+    }
 
-    WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF::Black), &p->_d2d_background_rect_brush));
-    WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF::Black), &p->_drawing_effect_brush));
-    WIN_CHECK(p->_d2d_context->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF::Black), &p->_temp_brush));
+    hr = p->_d2d_context->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::Black), &p->_d2d_background_rect_brush);
+    if (FAILED(hr)) {
+      return {};
+    }
 
-    auto hr = GlyphRenderer::Create(&p->_glyph_renderer);
+    hr = p->_d2d_context->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::Black), &p->_drawing_effect_brush);
+    if (FAILED(hr)) {
+      return {};
+    }
+
+    hr = p->_d2d_context->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::Black), &p->_temp_brush);
+    if (FAILED(hr)) {
+      return {};
+    }
+
+    hr = GlyphRenderer::Create(&p->_glyph_renderer);
     if (FAILED(hr)) {
       assert(false);
+      return {};
     }
 
     return p;
@@ -648,8 +719,12 @@ public:
         .bitmapOptions =
             D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW};
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> d2d_target_bitmap;
-    WIN_CHECK(_device->_d2d_context->CreateBitmapFromDxgiSurface(
-        _dxgi_backbuffer.Get(), &target_bitmap_properties, &d2d_target_bitmap));
+    auto hr = _device->_d2d_context->CreateBitmapFromDxgiSurface(
+        _dxgi_backbuffer.Get(), &target_bitmap_properties, &d2d_target_bitmap);
+    if (FAILED(hr)) {
+      return {};
+    }
+
     _device->_d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 
     if (!this->_draw_active) {
@@ -717,13 +792,21 @@ public:
 
       while (true) {
         BOOL has_run;
-        WIN_CHECK(glyph_run_enumerator->MoveNext(&has_run));
+        hr = glyph_run_enumerator->MoveNext(&has_run);
+        if (FAILED(hr)) {
+          assert(false);
+          break;
+        }
         if (!has_run) {
           break;
         }
 
         DWRITE_COLOR_GLYPH_RUN1 const *color_run;
-        WIN_CHECK(glyph_run_enumerator->GetCurrentRun(&color_run));
+        hr = glyph_run_enumerator->GetCurrentRun(&color_run);
+        if (FAILED(hr)) {
+          assert(false);
+          break;
+        }
 
         D2D1_POINT_2F current_baseline_origin{.x = color_run->baselineOriginX,
                                               .y = color_run->baselineOriginY};

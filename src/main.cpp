@@ -1,10 +1,10 @@
 #include "commandline.h"
-#include "renderer.h"
 #include "renderer/d3d.h"
 #include "renderer/swapchain.h"
 #include "win32window.h"
 #include <Windows.h>
 #include <nvim_frontend.h>
+#include <nvim_renderer_d2d.h>
 #include <plog/Appenders/DebugOutputAppender.h>
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Init.h>
@@ -40,9 +40,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   auto d3d = D3D::Create();
   auto swapchain = Swapchain::Create(d3d->Device(), hwnd);
 
-  Renderer renderer(d3d->Device().Get(), cmd.disable_ligatures,
-                    cmd.linespace_factor, window.GetMonitorDpi(),
-                    nvim.DefaultAttribute());
+  NvimRendererD2D renderer(d3d->Device().Get(), nvim.DefaultAttribute(),
+                           cmd.disable_ligatures, cmd.linespace_factor,
+                           window.GetMonitorDpi());
   renderer.SetFont(font, size);
 
   // initial window size

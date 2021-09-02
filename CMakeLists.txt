@@ -6,4 +6,4 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(Nvy)
 set(THIRDPARTY_DIR ${CMAKE_CURRENT_LIST_DIR}/third_party)
-subdirs(_external nvim_frontend nvim_renderer_d2d src samples)
+subdirs(_external src samples)

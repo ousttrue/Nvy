@@ -68,6 +68,9 @@ Swapchain::Create(const ComPtr<ID3D11Device2> &d3d_device, HWND hwnd) {
 }
 
 HRESULT Swapchain::Resize(uint32_t w, uint32_t h) {
+  if (w == 0 || h == 0) {
+    return E_FAIL;
+  }
   DXGI_SWAP_CHAIN_DESC desc;
   _dxgi_swapchain->GetDesc(&desc);
   if (desc.BufferDesc.Width == w && desc.BufferDesc.Height == h) {

@@ -1,8 +1,9 @@
 set(TARGET_NAME Nvy)
-add_executable(${TARGET_NAME} WIN32 ${THIRDPARTY_DIR}/nvim/nvim_icon.rc)
+add_executable(${TARGET_NAME} WIN32)
 
-target_sources(${TARGET_NAME} PUBLIC "main.cpp" "renderer/d3d.cpp"
-                                     "renderer/swapchain.cpp" "win32window.cpp")
+target_sources(
+  ${TARGET_NAME} PUBLIC main.cpp renderer/d3d.cpp renderer/swapchain.cpp
+                        win32window.cpp nvim/nvim_icon.rc)
 target_compile_definitions(${TARGET_NAME} PRIVATE UNICODE)
 target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(

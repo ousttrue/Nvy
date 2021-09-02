@@ -1,1 +1,0 @@
-subdirs(plog msgpackpp asio)

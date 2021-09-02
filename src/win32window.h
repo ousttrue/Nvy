@@ -4,8 +4,8 @@
 #include <string>
 
 using on_int2_t = std::function<void(int, int)>;
-using on_input_t = std::function<void(const InputEvent &)>;
-using on_mouse_t = std::function<void(const MouseEvent &)>;
+using on_input_t = std::function<void(const Nvim::InputEvent &)>;
+using on_mouse_t = std::function<void(const Nvim::MouseEvent &)>;
 using on_drop_file_t = std::function<void(const wchar_t *file)>;
 
 class Win32Window {

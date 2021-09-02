@@ -87,16 +87,16 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     _dead_char_pending = false;
     // Special case for <LT>
     if (wparam == 0x3C) {
-      _on_input(InputEvent::create_input("<LT>"));
+      _on_input(Nvim::InputEvent::create_input("<LT>"));
     } else {
-      _on_input(InputEvent::create_char(wparam));
+      _on_input(Nvim::InputEvent::create_char(wparam));
     }
     return 0;
   }
 
   case WM_SYSCHAR: {
     _dead_char_pending = false;
-    _on_input(InputEvent::create_syschar(wparam));
+    _on_input(Nvim::InputEvent::create_syschar(wparam));
     return 0;
   }
 
@@ -130,7 +130,7 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
       auto key =
           Nvim_VK_Map(static_cast<int>(wparam), GetKeyState(VK_CONTROL) < 0);
       if (key) {
-        _on_input(InputEvent::create_modified(key));
+        _on_input(Nvim::InputEvent::create_modified(key));
       } else {
         TranslateMessage(&current_msg);
       }
@@ -142,16 +142,16 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     POINTS cursor_pos = MAKEPOINTS(lparam);
     switch (wparam) {
     case MK_LBUTTON:
-      _on_mouse(
-          {cursor_pos.x, cursor_pos.y, MouseButton::Left, MouseAction::Drag});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Left,
+                 Nvim::MouseAction::Drag});
       break;
     case MK_MBUTTON:
-      _on_mouse(
-          {cursor_pos.x, cursor_pos.y, MouseButton::Middle, MouseAction::Drag});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Middle,
+                 Nvim::MouseAction::Drag});
       break;
     case MK_RBUTTON:
-      _on_mouse(
-          {cursor_pos.x, cursor_pos.y, MouseButton::Right, MouseAction::Drag});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Right,
+                 Nvim::MouseAction::Drag});
       break;
     }
     return 0;
@@ -165,23 +165,23 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
   case WM_MBUTTONUP: {
     POINTS cursor_pos = MAKEPOINTS(lparam);
     if (msg == WM_LBUTTONDOWN) {
-      _on_mouse(
-          {cursor_pos.x, cursor_pos.y, MouseButton::Left, MouseAction::Press});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Left,
+                 Nvim::MouseAction::Press});
     } else if (msg == WM_MBUTTONDOWN) {
-      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Middle,
-                 MouseAction::Press});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Middle,
+                 Nvim::MouseAction::Press});
     } else if (msg == WM_RBUTTONDOWN) {
-      _on_mouse(
-          {cursor_pos.x, cursor_pos.y, MouseButton::Right, MouseAction::Press});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Right,
+                 Nvim::MouseAction::Press});
     } else if (msg == WM_LBUTTONUP) {
-      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Left,
-                 MouseAction::Release});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Left,
+                 Nvim::MouseAction::Release});
     } else if (msg == WM_MBUTTONUP) {
-      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Middle,
-                 MouseAction::Release});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Middle,
+                 Nvim::MouseAction::Release});
     } else if (msg == WM_RBUTTONUP) {
-      _on_mouse({cursor_pos.x, cursor_pos.y, MouseButton::Right,
-                 MouseAction::Release});
+      _on_mouse({cursor_pos.x, cursor_pos.y, Nvim::MouseButton::Right,
+                 Nvim::MouseAction::Release});
     }
     return 0;
   }
@@ -208,53 +208,40 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     //   return 0;
     // }
 
-    // case WM_MOUSEWHEEL:
-    // {
-    //     bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) !=
-    //     0;
+  case WM_MOUSEWHEEL: {
+    bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 
-    //     POINTS screen_point = MAKEPOINTS(lparam);
-    //     POINT client_point{
-    //         .x = static_cast<LONG>(screen_point.x),
-    //         .y = static_cast<LONG>(screen_point.y),
-    //     };
-    //     ScreenToClient(hwnd, &client_point);
+    POINTS screen_point = MAKEPOINTS(lparam);
+    POINT client_point{
+        .x = static_cast<LONG>(screen_point.x),
+        .y = static_cast<LONG>(screen_point.y),
+    };
+    ScreenToClient((HWND)hwnd, &client_point);
 
-    //     short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
-    //     short scroll_amount = wheel_distance / WHEEL_DELTA;
-    //     auto font_size = context->renderer->FontSize();
-    //     auto [row, col] =
-    //         GridPoint::FromCursor(client_point.x, client_point.y,
-    //                               font_size.width, font_size.height);
-    //     MouseAction action = scroll_amount > 0
-    //                              ? MouseAction::MouseWheelUp
-    //                              : MouseAction::MouseWheelDown;
+    short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
+    short scroll_amount = wheel_distance / WHEEL_DELTA;
+    // auto font_size = context->renderer->FontSize();
+    // auto [row, col] = GridPoint::FromCursor(client_point.x, client_point.y,
+    //                                         font_size.width,
+    //                                         font_size.height);
+    // MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp
+    //                                        : MouseAction::MouseWheelDown;
 
-    //     if (should_resize_font)
-    //     {
-    //         auto fontSize =
-    //             context->renderer->ResizeFont(scroll_amount * 2.0f);
-    //         auto size = context->renderer->Size();
-    //         auto [rows, cols] = GridSize::FromWindowSize(
-    //             size.width, size.height, fontSize.width,
-    //             fontSize.height);
-    //         if (context->_grid.Rows() != rows ||
-    //             context->_grid.Cols() != rows)
-    //         {
-    //             context->SendResize(rows, cols);
-    //         }
-    //     }
-    //     else
-    //     {
-    //         for (int i = 0; i < abs(scroll_amount); ++i)
-    //         {
-    //             context->SendMouseInput(MouseButton::Wheel, action,
-    //             row,
-    //                                     col);
-    //         }
-    //     }
+    // if (should_resize_font) {
+    //   auto fontSize = context->renderer->ResizeFont(scroll_amount * 2.0f);
+    //   auto size = context->renderer->Size();
+    //   auto [rows, cols] = GridSize::FromWindowSize(
+    //       size.width, size.height, fontSize.width, fontSize.height);
+    //   if (context->_grid.Rows() != rows || context->_grid.Cols() != rows) {
+    //     context->SendResize(rows, cols);
+    //   }
+    // } else {
+    //   for (int i = 0; i < abs(scroll_amount); ++i) {
+    //     context->SendMouseInput(MouseButton::Wheel, action, row, col);
+    //   }
     // }
-    //     return 0;
+    return 0;
+  }
 
   case WM_DROPFILES: {
     wchar_t file_to_open[MAX_PATH];

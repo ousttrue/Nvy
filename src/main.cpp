@@ -62,10 +62,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   ShowWindow(hwnd, SW_SHOWDEFAULT);
 
   // bind window event
-  window._on_input = [&nvim](const InputEvent &input) { nvim.Input(input); };
-  window._on_mouse = [&nvim, &renderer](const MouseEvent &mouse) {
+  window._on_input = [&nvim](const Nvim::InputEvent &input) { nvim.Input(input); };
+  window._on_mouse = [&nvim, &renderer](const Nvim::MouseEvent &mouse) {
     auto [font_width, font_height] = renderer.FontSize();
-    auto grid_pos = GridPoint::FromCursor(mouse.x, mouse.y, ceilf(font_width),
+    auto grid_pos = Nvim::GridPoint::FromCursor(mouse.x, mouse.y, ceilf(font_width),
                                           ceilf(font_height));
     auto copy = mouse;
     copy.x = grid_pos.col;
@@ -79,7 +79,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
   // Attach the renderer now that the window size is determined
   auto [window_width, window_height] = window.Size();
   auto [font_width, font_height] = renderer.FontSize();
-  auto gridSize = GridSize::FromWindowSize(
+  auto gridSize = Nvim::GridSize::FromWindowSize(
       window_width, window_height, ceilf(font_width), ceilf(font_height));
 
   // nvim_attach_ui. start redraw message
@@ -100,7 +100,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     // update nvim gird size
     auto [font_width, font_height] = renderer.FontSize();
-    auto gridSize = GridSize::FromWindowSize(
+    auto gridSize = Nvim::GridSize::FromWindowSize(
         window_width, window_height, ceilf(font_width), ceilf(font_height));
     if (nvim.Sizing()) {
       auto a = 0;

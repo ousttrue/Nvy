@@ -71,66 +71,11 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     }
     return 0;
   }
-  case WM_MOVE: {
-    // RECT window_rect;
-    // DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect,
-    //                       sizeof(RECT)); // Get window position without
-    //                       shadows
-    // HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top},
-    //                                     MONITOR_DEFAULTTONEAREST);
-    // UINT current_dpi = 0;
-    // GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi, &current_dpi);
 
-    // if (current_dpi != context->saved_dpi_scaling) {
-    //   float dpi_scale = static_cast<float>(current_dpi) /
-    //                     static_cast<float>(context->saved_dpi_scaling);
-    //   GetWindowRect(hwnd,
-    //                 &window_rect); // Window RECT with shadows
-    //   int new_window_width =
-    //       (window_rect.right - window_rect.left) * dpi_scale + 0.5f;
-    //   int new_window_height =
-    //       (window_rect.bottom - window_rect.top) * dpi_scale + 0.5f;
-
-    //   // Make sure window is not larger than the actual
-    //   // monitor
-    //   MONITORINFO monitor_info;
-    //   monitor_info.cbSize = sizeof(monitor_info);
-    //   GetMonitorInfo(monitor, &monitor_info);
-    //   uint32_t monitor_width =
-    //       monitor_info.rcWork.right - monitor_info.rcWork.left;
-    //   uint32_t monitor_height =
-    //       monitor_info.rcWork.bottom - monitor_info.rcWork.top;
-    //   if (new_window_width > monitor_width)
-    //     new_window_width = monitor_width;
-    //   if (new_window_height > monitor_height)
-    //     new_window_height = monitor_height;
-
-    //   SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height,
-    //                SWP_NOMOVE | SWP_NOOWNERZORDER);
-
-    //   auto fontSize = context->renderer->SetDpiScale(current_dpi);
-    //   auto size = context->renderer->Size();
-    //   auto [rows, cols] = GridSize::FromWindowSize(
-    //       size.width, size.height, fontSize.width, fontSize.height);
-    //   if (context->_grid.Rows() != rows || context->_grid.Cols() != rows) {
-    //     context->SendResize(rows, cols);
-    //   }
-    //   context->saved_dpi_scaling = current_dpi;
-    // }
-    return 0;
-  }
   case WM_DESTROY: {
     PostQuitMessage(0);
     return 0;
   }
-    // case WM_RENDERER_FONT_UPDATE: {
-    //   auto size = context->renderer->Size();
-    //   auto fontSize = context->renderer->FontSize();
-    //   auto [rows, cols] = GridSize::FromWindowSize(
-    //       size.width, size.height, fontSize.width, fontSize.height);
-    //   context->SendResize(rows, cols);
-    //   return 0;
-    // }
 
   case WM_DEADCHAR:
   case WM_SYSDEADCHAR: {

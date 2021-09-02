@@ -72,6 +72,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance,
     copy.y = grid_pos.row;
     nvim.Mouse(copy);
   };
+  window._on_drop_file = [&nvim](const wchar_t *file) {
+    nvim.OpenFile(file);
+  };
 
   // Attach the renderer now that the window size is determined
   auto [window_width, window_height] = window.Size();

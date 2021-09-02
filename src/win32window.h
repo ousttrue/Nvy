@@ -6,6 +6,7 @@
 using on_int2_t = std::function<void(int, int)>;
 using on_input_t = std::function<void(const InputEvent &)>;
 using on_mouse_t = std::function<void(const MouseEvent &)>;
+using on_drop_file_t = std::function<void(const wchar_t *file)>;
 
 class Win32Window {
   void *_instance = nullptr;
@@ -19,6 +20,7 @@ public:
   on_int2_t _on_resize = [](auto, auto) {};
   on_input_t _on_input;
   on_mouse_t _on_mouse;
+  on_drop_file_t _on_drop_file;
 
   void *Create(void *instance, const wchar_t *class_name,
                const wchar_t *window_title);

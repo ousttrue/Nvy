@@ -256,22 +256,19 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
     // }
     //     return 0;
 
-    // case WM_DROPFILES:
-    // {
-    //     wchar_t file_to_open[MAX_PATH];
-    //     uint32_t num_files =
-    //         DragQueryFileW(reinterpret_cast<HDROP>(wparam),
-    //         0xFFFFFFFF,
-    //                        file_to_open, MAX_PATH);
-    //     for (int i = 0; i < num_files; ++i)
-    //     {
-    //         DragQueryFileW(reinterpret_cast<HDROP>(wparam), i,
-    //         file_to_open,
-    //                        MAX_PATH);
-    //         context->OpenFile(file_to_open);
-    //     }
-    // }
-    //     return 0;
+  case WM_DROPFILES: {
+    wchar_t file_to_open[MAX_PATH];
+    uint32_t num_files = DragQueryFileW(reinterpret_cast<HDROP>(wparam),
+                                        0xFFFFFFFF, file_to_open, MAX_PATH);
+    for (int i = 0; i < num_files; ++i) {
+      DragQueryFileW(reinterpret_cast<HDROP>(wparam), i, file_to_open,
+                     MAX_PATH);
+      if (_on_drop_file) {
+        _on_drop_file(file_to_open);
+      }
+    }
+    return 0;
+  }
   }
 
   return DefWindowProc((HWND)hwnd, msg, wparam, lparam);

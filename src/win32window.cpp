@@ -1,8 +1,6 @@
 #include "win32window.h"
 #include <Windows.h>
-//
 #include <dwmapi.h>
-#include <nvim_vk_map.h>
 #include <shellscalingapi.h>
 
 WINDOWPLACEMENT saved_window_placement = {.length = sizeof(WINDOWPLACEMENT)};
@@ -62,6 +60,12 @@ void *Win32Window::Create(void *instance, const wchar_t *class_name,
 
 uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
                            uint64_t lparam) {
+
+  uint64_t out;
+  if (_nvim_Key.ProcessMessage(hwnd, msg, wparam, lparam, _on_input, &out)) {
+    return out;
+  }
+
   switch (msg) {
   case WM_SIZE: {
     if (wparam != SIZE_MINIMIZED) {
@@ -74,67 +78,6 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
 
   case WM_DESTROY: {
     PostQuitMessage(0);
-    return 0;
-  }
-
-  case WM_DEADCHAR:
-  case WM_SYSDEADCHAR: {
-    _dead_char_pending = true;
-    return 0;
-  }
-
-  case WM_CHAR: {
-    _dead_char_pending = false;
-    // Special case for <LT>
-    if (wparam == 0x3C) {
-      _on_input(Nvim::InputEvent::create_input("<LT>"));
-    } else {
-      _on_input(Nvim::InputEvent::create_char(wparam));
-    }
-    return 0;
-  }
-
-  case WM_SYSCHAR: {
-    _dead_char_pending = false;
-    _on_input(Nvim::InputEvent::create_syschar(wparam));
-    return 0;
-  }
-
-  case WM_KEYDOWN:
-  case WM_SYSKEYDOWN: {
-    // Special case for <ALT+ENTER> (fullscreen transition)
-    if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN) {
-      ToggleFullscreen();
-    } else {
-      LONG msg_pos = GetMessagePos();
-      POINTS pt = MAKEPOINTS(msg_pos);
-      MSG current_msg{.hwnd = (HWND)hwnd,
-                      .message = msg,
-                      .wParam = wparam,
-                      .lParam = (LPARAM)lparam,
-                      .time = static_cast<DWORD>(GetMessageTime()),
-                      .pt = POINT{pt.x, pt.y}};
-
-      if (_dead_char_pending) {
-        if (static_cast<int>(wparam) == VK_SPACE ||
-            static_cast<int>(wparam) == VK_BACK ||
-            static_cast<int>(wparam) == VK_ESCAPE) {
-          _dead_char_pending = false;
-          TranslateMessage(&current_msg);
-          return 0;
-        }
-      }
-
-      // If none of the special keys were hit, process in
-      // WM_CHAR
-      auto key =
-          Nvim_VK_Map(static_cast<int>(wparam), GetKeyState(VK_CONTROL) < 0);
-      if (key) {
-        _on_input(Nvim::InputEvent::create_modified(key));
-      } else {
-        TranslateMessage(&current_msg);
-      }
-    }
     return 0;
   }
 
@@ -262,10 +205,8 @@ uint64_t Win32Window::Proc(void *hwnd, uint32_t msg, uint64_t wparam,
 }
 
 bool Win32Window::Loop() {
-  MSG msg;
-  uint32_t previous_width = 0, previous_height = 0;
 
-  // windows msg
+  MSG msg;
   while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
 
     if (!GetMessage(&msg, NULL, 0, 0)) {

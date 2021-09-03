@@ -1,5 +1,6 @@
 #include <functional>
 #include <nvim_input.h>
+#include <nvim_win32_key_processor.h>
 #include <stdint.h>
 #include <string>
 
@@ -13,7 +14,7 @@ class Win32Window {
   void *_hwnd = nullptr;
   std::wstring _class_name;
 
-  bool _dead_char_pending = false;
+  NvimWin32KeyProcessor _nvim_Key;
 
 public:
   ~Win32Window();

@@ -11,6 +11,7 @@ target_link_libraries(
   PUBLIC plog
          nvim_frontend
          nvim_renderer_d2d
+         nvim_win32
          user32.lib
          d3d11.lib
          d2d1.lib
